@@ -1,6 +1,6 @@
 # Multimodal RAG with Gemini Embedding
 
-A Retrieval-Augmented Generation application that embeds multiple content types — text, images, video, audio, and PDFs — using Google's Gemini Embedding 2 model, stores vectors in Supabase (pgvector), and uses OpenAI o4-mini for reasoning. Built as a single Streamlit app.
+A Retrieval-Augmented Generation application that embeds multiple content types — text, images, video, audio, and PDFs — using Google's Gemini Embedding 2 model, stores vectors in Supabase (pgvector), and uses Gemini 3.1 Flash Lite for reasoning. Built as a single Streamlit app.
 
 ## Setup
 
@@ -12,7 +12,6 @@ A Retrieval-Augmented Generation application that embeds multiple content types 
 2. Create a `.env` file with your API keys:
    ```
    GEMINI_API_KEY=your-key
-   OPENAI_API_KEY=your-key
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_SERVICE_KEY=your-key
    ```
@@ -39,7 +38,7 @@ A Retrieval-Augmented Generation application that embeds multiple content types 
 - Configurable top-k and similarity threshold
 - Filter results by content type
 - Images are displayed inline in search results
-- Optional reasoning via OpenAI o4-mini with source citations
+- Optional reasoning via Gemini 3.1 Flash Lite with source citations
 
 ### Browse
 - View all stored documents in a table
@@ -54,7 +53,7 @@ lib/
 ├── chunker.py      Content-aware chunking (text, PDF, audio, video)
 ├── db.py           Supabase vector operations (insert, search, stats)
 ├── rag.py          RAG pipeline orchestration (ingest + query)
-└── codex.py        OpenAI o4-mini reasoning with source citations
+└── codex.py        Gemini 3.1 Flash Lite reasoning with source citations
 ```
 
 ## Tech Stack
@@ -63,7 +62,7 @@ lib/
 |-----------|------------|
 | Embeddings | Gemini Embedding 2 Preview (3072 dims) |
 | Vector DB | Supabase + pgvector |
-| Reasoning | OpenAI o4-mini |
+| Reasoning | Gemini 3.1 Flash Lite |
 | GUI | Streamlit |
 | PDF | PyMuPDF |
 | Audio | pydub |
