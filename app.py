@@ -57,12 +57,9 @@ with tab_upload:
                 st.write(f"**Processing {file_idx+1}/{len(uploaded_files)}: {uploaded.name}**")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                chunks_done = [0]
-
-                def on_progress(msg: str, _bar=progress_bar, _st=status_text, _c=chunks_done):
-                    _c[0] += 1
+                def on_progress(msg: str, current: int, total: int, _bar=progress_bar, _st=status_text):
                     _st.text(msg)
-                    _bar.progress(min(_c[0] * 10, 100))
+                    _bar.progress(min(current / total, 1.0) if total > 0 else 0)
 
                 try:
                     file_bytes = uploaded.read()

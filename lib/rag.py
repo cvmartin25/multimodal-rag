@@ -61,9 +61,9 @@ def ingest(
     existing = db.get_existing_chunks(filename)
     results = []
 
-    def _progress(msg: str):
+    def _progress(msg: str, current: int = 0, total: int = 1):
         if on_progress:
-            on_progress(msg)
+            on_progress(msg, current, total)
 
     if content_type == "text":
         text = file_bytes.decode("utf-8", errors="replace")
@@ -71,9 +71,9 @@ def ingest(
         total = len(chunks)
         for i, chunk_text in enumerate(chunks):
             if i in existing:
-                _progress(f"Skipping text chunk {i+1}/{total} (exists)")
+                _progress(f"Skipping text chunk {i+1}/{total} (exists)", i + 1, total)
                 continue
-            _progress(f"Embedding text chunk {i+1}/{total}")
+            _progress(f"Embedding text chunk {i+1}/{total}", i + 1, total)
             vec = embedder.embed_text(chunk_text)
             row = db.insert_document(
                 title=title,
@@ -89,9 +89,9 @@ def ingest(
 
     elif content_type == "image":
         if 0 in existing:
-            _progress("Skipping image (exists)")
+            _progress("Skipping image (exists)", 1, 1)
         else:
-            _progress("Embedding image")
+            _progress("Embedding image", 1, 1)
             vec = embedder.embed_image(file_bytes, mime_type=mime_type)
             b64 = base64.b64encode(file_bytes).decode("ascii")
             row = db.insert_document(
@@ -112,9 +112,9 @@ def ingest(
         total = len(pdf_chunks)
         for i, pdf_bytes in enumerate(pdf_chunks):
             if i in existing:
-                _progress(f"Skipping PDF chunk {i+1}/{total} (exists)")
+                _progress(f"Skipping PDF chunk {i+1}/{total} (exists)", i + 1, total)
                 continue
-            _progress(f"Embedding PDF chunk {i+1}/{total}")
+            _progress(f"Embedding PDF chunk {i+1}/{total}", i + 1, total)
             text = chunker.extract_pdf_text(pdf_bytes)
             vec = embedder.embed_pdf_page_bytes(pdf_bytes)
             row = db.insert_document(
@@ -135,9 +135,9 @@ def ingest(
         total = len(audio_chunks)
         for i, chunk_bytes in enumerate(audio_chunks):
             if i in existing:
-                _progress(f"Skipping audio chunk {i+1}/{total} (exists)")
+                _progress(f"Skipping audio chunk {i+1}/{total} (exists)", i + 1, total)
                 continue
-            _progress(f"Embedding audio chunk {i+1}/{total}")
+            _progress(f"Embedding audio chunk {i+1}/{total}", i + 1, total)
             vec = embedder.embed_audio(chunk_bytes, mime_type=mime_type)
             row = db.insert_document(
                 title=title,
@@ -157,9 +157,9 @@ def ingest(
         total = len(video_chunks)
         for i, chunk_bytes in enumerate(video_chunks):
             if i in existing:
-                _progress(f"Skipping video chunk {i+1}/{total} (exists)")
+                _progress(f"Skipping video chunk {i+1}/{total} (exists)", i + 1, total)
                 continue
-            _progress(f"Embedding video chunk {i+1}/{total}")
+            _progress(f"Embedding video chunk {i+1}/{total}", i + 1, total)
             vec = embedder.embed_video(chunk_bytes, mime_type=mime_type)
             b64 = base64.b64encode(chunk_bytes).decode("ascii")
             row = db.insert_document(
