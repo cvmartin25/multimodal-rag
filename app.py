@@ -18,7 +18,7 @@ with st.sidebar:
         "Content type filter",
         ["all", "text", "image", "pdf", "audio", "video"],
     )
-    use_codex = st.checkbox("Use Codex reasoning", value=True)
+    use_reasoning = st.checkbox("Use reasoning", value=True)
 
     st.divider()
     st.header("Database Stats")
@@ -102,7 +102,7 @@ with tab_search:
                         top_k=top_k,
                         threshold=threshold,
                         filter_type=filter_type,
-                        use_codex=use_codex,
+                        use_reasoning=use_reasoning,
                     )
                 except Exception as e:
                     st.error(f"Search error: {e}")
@@ -125,7 +125,7 @@ with tab_search:
                 ):
                     if src["content_type"] == "image" and src.get("file_data"):
                         img_bytes = base64.b64decode(src["file_data"])
-                        st.image(img_bytes, caption=src["original_filename"], use_container_width=True)
+                        st.image(img_bytes, caption=src["original_filename"], width="stretch")
                     elif src["content_type"] == "video" and src.get("file_data"):
                         vid_bytes = base64.b64decode(src["file_data"])
                         mime = (src.get("metadata") or {}).get("mime_type", "video/mp4")
@@ -152,7 +152,7 @@ with tab_browse:
     else:
         st.dataframe(
             docs,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "id": st.column_config.TextColumn("ID", width="small"),
                 "title": st.column_config.TextColumn("Title"),
