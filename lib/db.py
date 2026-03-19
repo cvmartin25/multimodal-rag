@@ -1,8 +1,5 @@
 import os
 from supabase import create_client, Client
-from dotenv import load_dotenv
-
-load_dotenv()
 
 _client: Client | None = None
 
@@ -116,7 +113,13 @@ def delete_by_filename(original_filename: str) -> int:
 
 
 def get_stats() -> dict:
-    rows = get_all_documents()
+    result = (
+        get_client()
+        .table("documents")
+        .select("content_type")
+        .execute()
+    )
+    rows = result.data
     total = len(rows)
     by_type: dict[str, int] = {}
     for r in rows:

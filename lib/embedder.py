@@ -1,24 +1,20 @@
-import os
 import time
 import numpy as np
-from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-
-load_dotenv()
+from google.api_core import exceptions as gax_exceptions
+from lib.gemini_client import get_client
 
 MODEL = "gemini-embedding-2-preview"
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 60  # seconds
 
-_client: genai.Client | None = None
-
-
-def get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-    return _client
+_RETRYABLE = (
+    gax_exceptions.ResourceExhausted,
+    gax_exceptions.ServiceUnavailable,
+    gax_exceptions.DeadlineExceeded,
+    gax_exceptions.InternalServerError,
+    ConnectionError,
+)
 
 
 def _normalize(vec: list[float]) -> list[float]:
@@ -38,10 +34,10 @@ def _embed_with_retry(contents, task_type: str) -> list[float]:
                 config=types.EmbedContentConfig(task_type=task_type),
             )
             return _normalize(response.embeddings[0].values)
-        except Exception as e:
+        except _RETRYABLE as e:
             if attempt == MAX_RETRIES - 1:
                 raise
-            delay = RETRY_BASE_DELAY * (2 ** attempt)  # 60s, 120s, 240s
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
             print(f"Embedding failed ({e}), retrying in {delay}s...")
             time.sleep(delay)
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 import base64
-import fitz
 from lib import embedder, db, reasoning, chunker
 
 MIME_MAP = {
@@ -37,7 +36,7 @@ def detect_content_type(mime: str, filename: str) -> str:
     if mime in MIME_MAP:
         return MIME_MAP[mime]
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if ext == "txt":
+    if ext in ("txt", "md"):
         return "text"
     if ext in ("png", "jpg", "jpeg", "webp", "gif"):
         return "image"
@@ -119,8 +118,7 @@ def ingest(
                 _progress(f"Skipping PDF chunk {i+1}/{total} (exists)", i + 1, total)
                 continue
             _progress(f"Embedding PDF chunk {i+1}/{total}", i + 1, total)
-            text = chunker.extract_pdf_text(pdf_bytes)
-            page_count = len(fitz.open(stream=pdf_bytes, filetype="pdf"))
+            text, page_count = chunker.extract_pdf_text(pdf_bytes)
             vec = embedder.embed_pdf_page_bytes(pdf_bytes)
             row = db.insert_document(
                 title=title,
