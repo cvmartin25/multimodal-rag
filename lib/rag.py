@@ -143,6 +143,7 @@ def ingest(
                 continue
             _progress(f"Embedding audio chunk {i+1}/{total}", i + 1, total)
             vec = embedder.embed_audio(chunk_bytes, mime_type=mime_type)
+            b64 = base64.b64encode(chunk_bytes).decode("ascii")
             row = db.insert_document(
                 title=title,
                 content_type="audio",
@@ -150,9 +151,10 @@ def ingest(
                 chunk_index=i,
                 chunk_total=total,
                 text_content=None,
-                metadata={"format": fmt, "chunk_seconds": 75},
+                metadata={"format": fmt, "chunk_seconds": 75, "mime_type": mime_type},
                 embedding=vec,
                 collection=collection,
+                file_data=b64,
             )
             results.append(row)
 
