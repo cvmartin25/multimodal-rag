@@ -18,7 +18,17 @@ with st.sidebar:
         "Content type filter",
         ["all", "text", "image", "pdf", "audio", "video"],
     )
-    use_codex = st.checkbox("Use Codex reasoning", value=True)
+
+    try:
+        collections = db.get_collections()
+    except Exception:
+        collections = []
+    filter_collection = st.selectbox(
+        "Collection filter",
+        ["all"] + collections,
+    )
+
+    use_reasoning = st.checkbox("Use reasoning", value=True)
 
     st.divider()
     st.header("Database Stats")
@@ -49,30 +59,31 @@ with tab_upload:
         accept_multiple_files=True,
     )
     title = st.text_input("Document title (applied to all files)", placeholder="My document")
+    col_choice = st.selectbox("Collection", collections + ["+ New collection..."], key="upload_col")
+    if col_choice == "+ New collection...":
+        col_choice = st.text_input("New collection name")
 
-    if uploaded_files and title:
+    if uploaded_files and title and col_choice:
         if st.button("Embed & Store", type="primary"):
             total_stored = 0
             for file_idx, uploaded in enumerate(uploaded_files):
                 st.write(f"**Processing {file_idx+1}/{len(uploaded_files)}: {uploaded.name}**")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                chunks_done = [0]
-
-                def on_progress(msg: str, _bar=progress_bar, _st=status_text, _c=chunks_done):
-                    _c[0] += 1
+                def on_progress(msg: str, current: int, total: int, _bar=progress_bar, _st=status_text):
                     _st.text(msg)
-                    _bar.progress(min(_c[0] * 10, 100))
+                    _bar.progress(min(current / total, 1.0) if total > 0 else 0)
 
                 try:
                     file_bytes = uploaded.read()
                     mime = uploaded.type or "application/octet-stream"
-                    status_text.text("Processing...")
+                    status_text.text("Chunking...")
                     results = rag.ingest(
                         file_bytes=file_bytes,
                         filename=uploaded.name,
                         title=title,
                         mime_type=mime,
+                        collection=col_choice,
                         on_progress=on_progress,
                     )
                     progress_bar.progress(100)
@@ -83,8 +94,8 @@ with tab_upload:
                     raise
             st.success(f"Stored {total_stored} chunk(s) across {len(uploaded_files)} file(s)")
             st.cache_data.clear()
-    elif uploaded_files and not title:
-        st.warning("Please enter a document title.")
+    elif uploaded_files and (not title or not col_choice):
+        st.warning("Please enter a document title and select a collection.")
 
 # ── Tab 2: Search ───────────────────────────────────────────────────────────
 with tab_search:
@@ -102,7 +113,8 @@ with tab_search:
                         top_k=top_k,
                         threshold=threshold,
                         filter_type=filter_type,
-                        use_codex=use_codex,
+                        filter_collection=filter_collection,
+                        use_reasoning=use_reasoning,
                     )
                 except Exception as e:
                     st.error(f"Search error: {e}")
@@ -125,7 +137,7 @@ with tab_search:
                 ):
                     if src["content_type"] == "image" and src.get("file_data"):
                         img_bytes = base64.b64decode(src["file_data"])
-                        st.image(img_bytes, caption=src["original_filename"], use_container_width=True)
+                        st.image(img_bytes, caption=src["original_filename"], width="stretch")
                     elif src["content_type"] == "video" and src.get("file_data"):
                         vid_bytes = base64.b64decode(src["file_data"])
                         mime = (src.get("metadata") or {}).get("mime_type", "video/mp4")
@@ -152,7 +164,7 @@ with tab_browse:
     else:
         st.dataframe(
             docs,
-            use_container_width=True,
+            width="stretch",
             column_config={
                 "id": st.column_config.TextColumn("ID", width="small"),
                 "title": st.column_config.TextColumn("Title"),
@@ -160,14 +172,28 @@ with tab_browse:
                 "original_filename": st.column_config.TextColumn("Filename"),
                 "chunk_index": st.column_config.NumberColumn("Chunk"),
                 "chunk_total": st.column_config.NumberColumn("Total"),
+                "collection": st.column_config.TextColumn("Collection"),
                 "created_at": st.column_config.TextColumn("Created"),
             },
         )
 
         st.divider()
         st.subheader("Delete documents")
-        delete_id = st.text_input("Document ID to delete")
-        if st.button("Delete", type="secondary"):
+
+        filenames = sorted(set(d["original_filename"] for d in docs))
+        delete_file = st.selectbox("Delete all chunks of a file", [""] + filenames)
+        if st.button("Delete file", type="secondary"):
+            if delete_file:
+                try:
+                    count = db.delete_by_filename(delete_file)
+                    st.success(f"Deleted {count} chunk(s) of {delete_file}")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Delete error: {e}")
+
+        delete_id = st.text_input("Or delete single chunk by ID")
+        if st.button("Delete by ID", type="secondary"):
             if delete_id.strip():
                 try:
                     db.delete_document(delete_id.strip())
