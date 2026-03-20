@@ -83,23 +83,9 @@ def get_all_documents() -> list[dict]:
 
 
 def get_collections() -> list[str]:
-    """Return sorted list of distinct collection names."""
-    all_rows = []
-    offset = 0
-    page_size = 1000
-    while True:
-        result = (
-            get_client()
-            .table("documents")
-            .select("collection")
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        all_rows.extend(result.data)
-        if len(result.data) < page_size:
-            break
-        offset += page_size
-    return sorted({r["collection"] for r in all_rows})
+    """Return sorted list of distinct collection names via RPC."""
+    result = get_client().rpc("get_distinct_collections").execute()
+    return [r["collection"] for r in result.data]
 
 
 def get_existing_chunks(original_filename: str) -> set[int]:
@@ -131,24 +117,8 @@ def delete_by_filename(original_filename: str) -> int:
 
 
 def get_stats() -> dict:
-    all_rows = []
-    offset = 0
-    page_size = 1000
-    while True:
-        result = (
-            get_client()
-            .table("documents")
-            .select("content_type")
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        all_rows.extend(result.data)
-        if len(result.data) < page_size:
-            break
-        offset += page_size
-    total = len(all_rows)
-    by_type: dict[str, int] = {}
-    for r in all_rows:
-        ct = r["content_type"]
-        by_type[ct] = by_type.get(ct, 0) + 1
+    """Return total count and per-type breakdown via RPC."""
+    result = get_client().rpc("get_document_stats").execute()
+    by_type = {r["content_type"]: r["cnt"] for r in result.data}
+    total = sum(by_type.values())
     return {"total": total, "by_type": by_type}
