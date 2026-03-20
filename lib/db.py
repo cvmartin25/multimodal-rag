@@ -63,14 +63,23 @@ def search_documents(
 
 
 def get_all_documents() -> list[dict]:
-    result = (
-        get_client()
-        .table("documents")
-        .select("id, title, content_type, original_filename, chunk_index, chunk_total, collection, created_at")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return result.data
+    all_rows = []
+    offset = 0
+    page_size = 1000
+    while True:
+        result = (
+            get_client()
+            .table("documents")
+            .select("id, title, content_type, original_filename, chunk_index, chunk_total, collection, created_at")
+            .order("created_at", desc=True)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        all_rows.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        offset += page_size
+    return all_rows
 
 
 def get_collections() -> list[str]:
@@ -113,16 +122,24 @@ def delete_by_filename(original_filename: str) -> int:
 
 
 def get_stats() -> dict:
-    result = (
-        get_client()
-        .table("documents")
-        .select("content_type")
-        .execute()
-    )
-    rows = result.data
-    total = len(rows)
+    all_rows = []
+    offset = 0
+    page_size = 1000
+    while True:
+        result = (
+            get_client()
+            .table("documents")
+            .select("content_type")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        all_rows.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        offset += page_size
+    total = len(all_rows)
     by_type: dict[str, int] = {}
-    for r in rows:
+    for r in all_rows:
         ct = r["content_type"]
         by_type[ct] = by_type.get(ct, 0) + 1
     return {"total": total, "by_type": by_type}

@@ -84,5 +84,29 @@ def embed_pdf_page_bytes(
     return _embed_with_retry(part, task_type)
 
 
+def embed_batch(
+    contents_list: list,
+    task_type: str = "RETRIEVAL_DOCUMENT",
+) -> list[list[float]]:
+    """Embed multiple contents in a single API call.
+
+    Returns a list of normalized embedding vectors, one per input.
+    """
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = get_client().models.embed_content(
+                model=MODEL,
+                contents=contents_list,
+                config=types.EmbedContentConfig(task_type=task_type),
+            )
+            return [_normalize(e.values) for e in response.embeddings]
+        except _RETRYABLE as e:
+            if attempt == MAX_RETRIES - 1:
+                raise
+            delay = RETRY_BASE_DELAY * (2 ** attempt)
+            print(f"Batch embed failed ({e}), retrying in {delay}s...")
+            time.sleep(delay)
+
+
 def embed_query(text: str) -> list[float]:
     return embed_text(text, task_type="RETRIEVAL_QUERY")
