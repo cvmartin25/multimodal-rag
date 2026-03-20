@@ -84,13 +84,22 @@ def get_all_documents() -> list[dict]:
 
 def get_collections() -> list[str]:
     """Return sorted list of distinct collection names."""
-    result = (
-        get_client()
-        .table("documents")
-        .select("collection")
-        .execute()
-    )
-    return sorted(set(r["collection"] for r in result.data))
+    all_rows = []
+    offset = 0
+    page_size = 1000
+    while True:
+        result = (
+            get_client()
+            .table("documents")
+            .select("collection")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        all_rows.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        offset += page_size
+    return sorted({r["collection"] for r in all_rows})
 
 
 def get_existing_chunks(original_filename: str) -> set[int]:
