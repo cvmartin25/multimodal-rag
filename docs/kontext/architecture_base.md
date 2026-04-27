@@ -1,11 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code
-(claude.ai/code) when working with code in this
-repository.
-
-## Project Overview
-
+This is the first overview of the architecture. Date: 27.04.2026. This file may soon be outdated, and will be reworked regulary.
 Multimodal RAG application that embeds text, images,
 video, audio, and PDFs using Google's Gemini Embedding
 model, stores vectors in Supabase (pgvector), and uses
