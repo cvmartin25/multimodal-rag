@@ -25,6 +25,7 @@ class RetrieveOptions(BaseModel):
     collection: str | None = None
     include_qa: bool = Field(default=False, alias="includeQa")
     threshold: float = 0.3
+    use_two_stage: bool | None = Field(default=None, alias="useTwoStage")
 
 
 class RetrieveRequest(BaseModel):
@@ -83,6 +84,23 @@ class RetrieveResponse(BaseModel):
     evidences: list[Evidence]
     hints_for_llm: list[LlmHint] = Field(default_factory=list, alias="hintsForLLM")
     debug: dict[str, Any] | None = None
+
+
+class PrepareContextRequest(BaseModel):
+    request_id: str = Field(alias="requestId")
+    tenant: TenantContext
+    evidences: list[Evidence]
+    max_items: int = Field(default=3, alias="maxItems")
+
+
+class PreparedContextItem(BaseModel):
+    evidence: Evidence
+    checklist: list[str]
+
+
+class PrepareContextResponse(BaseModel):
+    request_id: str = Field(alias="requestId")
+    prepared_items: list[PreparedContextItem] = Field(alias="preparedItems")
 
 
 class IndexPayload(BaseModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from supabase import Client, create_client
@@ -37,4 +38,32 @@ class SupabaseVectorStore:
             },
         ).execute()
         return result.data or []
+
+    def fetch_tenant_rows(
+        self,
+        coach_profile_id: str,
+        collection: str | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        query = (
+            self._client.table(self._settings.supabase_table)
+            .select(
+                "id, title, content_type, original_filename, text_content, metadata, "
+                "embedding, coach_profile_id, source_kind, source_id"
+            )
+            .eq("coach_profile_id", coach_profile_id)
+            .limit(max(limit, 1))
+        )
+        if collection:
+            query = query.eq("collection", collection)
+        result = query.execute()
+        rows = result.data or []
+        for row in rows:
+            emb = row.get("embedding")
+            if isinstance(emb, str):
+                try:
+                    row["embedding"] = json.loads(emb)
+                except Exception:
+                    row["embedding"] = []
+        return rows
 

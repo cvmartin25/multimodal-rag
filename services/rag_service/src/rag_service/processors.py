@@ -94,6 +94,12 @@ class TimeWindow:
     mime_type: str
 
 
+@dataclass
+class TimeRange:
+    start_sec: int
+    end_sec: int
+
+
 def _chunk_media_with_pydub(audio_bytes: bytes, fmt: str, seconds: int) -> list[bytes]:
     from pydub import AudioSegment
 
@@ -165,6 +171,85 @@ def chunk_video(video_bytes: bytes, mime_type: str = "video/mp4", window_seconds
             if end >= duration:
                 break
             start += step
+
+        clip.close()
+        return windows
+    finally:
+        os.unlink(tmp_in.name)
+
+
+def get_video_duration_seconds(video_bytes: bytes, mime_type: str = "video/mp4") -> int:
+    from moviepy import VideoFileClip
+
+    suffix = ".mp4" if "mp4" in mime_type else ".mov"
+    tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp_in.write(video_bytes)
+    tmp_in.close()
+    try:
+        clip = VideoFileClip(tmp_in.name)
+        duration = int(clip.duration or 0)
+        clip.close()
+        return max(duration, 1)
+    finally:
+        os.unlink(tmp_in.name)
+
+
+def chunk_video_by_ranges(
+    video_bytes: bytes,
+    ranges: list[TimeRange],
+    mime_type: str = "video/mp4",
+    window_seconds: int = 120,
+    overlap_seconds: int = 10,
+) -> list[TimeWindow]:
+    from moviepy import VideoFileClip
+
+    if not ranges:
+        return []
+
+    suffix = ".mp4" if "mp4" in mime_type else ".mov"
+    step = max(window_seconds - overlap_seconds, 1)
+
+    tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp_in.write(video_bytes)
+    tmp_in.close()
+
+    windows: list[TimeWindow] = []
+    try:
+        clip = VideoFileClip(tmp_in.name)
+        duration = int(clip.duration or 0)
+        if duration <= 0:
+            clip.close()
+            return []
+
+        for r in ranges:
+            start = max(0, int(r.start_sec))
+            end_cap = min(int(r.end_sec), duration)
+            if end_cap <= start:
+                continue
+            cursor = start
+            while cursor < end_cap:
+                end = min(cursor + window_seconds, end_cap)
+                sub = clip.subclipped(cursor, end)
+                tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                tmp_out_name = tmp_out.name
+                tmp_out.close()
+                try:
+                    sub.write_videofile(tmp_out_name, logger=None)
+                    with open(tmp_out_name, "rb") as f:
+                        windows.append(
+                            TimeWindow(
+                                start_sec=int(cursor),
+                                end_sec=int(end),
+                                payload=f.read(),
+                                mime_type=mime_type,
+                            )
+                        )
+                finally:
+                    os.unlink(tmp_out_name)
+                    sub.close()
+                if end >= end_cap:
+                    break
+                cursor += step
 
         clip.close()
         return windows

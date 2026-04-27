@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import base64
+import re
 from typing import Any
+
+import numpy as np
 
 from .config import Settings
 from .embedding import Embedder
+from .gemini_client import GeminiClientFactory
 from .models import (
     DisplayData,
     Evidence,
     EvidenceLocator,
     IndexPayload,
     LlmHint,
+    PrepareContextRequest,
+    PrepareContextResponse,
+    PreparedContextItem,
     RetrieveRequest,
     RetrieveResponse,
     SourceRef,
@@ -20,19 +27,33 @@ from .models import (
 from .processors import (
     chunk_audio,
     chunk_text,
+    chunk_video_by_ranges,
     chunk_video,
     detect_content_type,
+    get_video_duration_seconds,
     split_pdf_to_pages,
 )
 from .vector_store import SupabaseVectorStore
-from .video_analysis import build_segments_from_windows
+from .video_analysis import (
+    analyze_full_video_with_flash,
+    analyze_windows_with_flash,
+    build_segments_from_windows,
+    to_time_ranges,
+)
 
 
 class RagService:
-    def __init__(self, settings: Settings, vector_store: SupabaseVectorStore, embedder: Embedder) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        vector_store: SupabaseVectorStore,
+        embedder: Embedder,
+        gemini_factory: GeminiClientFactory,
+    ) -> None:
         self._settings = settings
         self._store = vector_store
         self._embedder = embedder
+        self._gemini_factory = gemini_factory
 
     def retrieve(self, request: RetrieveRequest) -> RetrieveResponse:
         options = request.options
@@ -40,22 +61,39 @@ class RagService:
         top_n = options.top_n if options and options.top_n else self._settings.default_topn
         threshold = options.threshold if options else 0.3
         collection = options.collection if options and options.collection else self._settings.default_collection
+        use_two_stage = (
+            options.use_two_stage
+            if options and options.use_two_stage is not None
+            else self._settings.two_stage_enabled
+        )
 
         query_vec = self._embedder.embed_query(request.query.text)
-        # Search all types first; type filtering is applied post-map for schema flexibility.
-        matches = self._store.search(
-            query_embedding=query_vec,
-            top_k=max(top_k, 1),
-            threshold=threshold,
-            content_type=None,
-            collection=collection,
-        )
+        if use_two_stage:
+            matches = self._two_stage_search(
+                coach_profile_id=request.tenant.coach_profile_id,
+                query_text=request.query.text,
+                query_vec=query_vec,
+                collection=collection,
+                top_k=max(top_k, 1),
+                threshold=threshold,
+            )
+        else:
+            # Search all types first; type filtering is applied post-map for schema flexibility.
+            matches = self._store.search(
+                query_embedding=query_vec,
+                top_k=max(top_k, 1),
+                threshold=threshold,
+                content_type=None,
+                collection=collection,
+            )
 
         evidences: list[Evidence] = []
         include_qa = bool(options and options.include_qa)
         type_filter = set(options.types) if options and options.types else None
 
         for row in matches:
+            if not self._row_matches_tenant(row=row, coach_profile_id=request.tenant.coach_profile_id):
+                continue
             evidence = self._map_row_to_evidence(row=row, coach_profile_id=request.tenant.coach_profile_id)
             if type_filter and evidence.type not in type_filter:
                 continue
@@ -80,6 +118,7 @@ class RagService:
                 "topK": top_k,
                 "topN": top_n,
                 "returned": len(evidences),
+                "twoStage": use_two_stage,
             }
             if request.debug
             else None,
@@ -161,17 +200,45 @@ class RagService:
                 inserted += 1
 
         elif content_type == "video":
-            windows = chunk_video(
+            full_duration = get_video_duration_seconds(file_bytes, mime_type=payload.mime_type)
+            segments = []
+            if payload.analyze_video_relevance:
+                segments = analyze_full_video_with_flash(
+                    video_bytes=file_bytes,
+                    mime_type=payload.mime_type,
+                    duration_sec=full_duration,
+                    gemini_factory=self._gemini_factory,
+                )
+            if not segments:
+                # Fallback to deterministic windows + per-window classification fallback.
+                fallback_windows = chunk_video(
+                    video_bytes=file_bytes,
+                    mime_type=payload.mime_type,
+                    window_seconds=self._settings.window_seconds,
+                    overlap_seconds=self._settings.overlap_seconds,
+                )
+                if payload.analyze_video_relevance:
+                    segments = analyze_windows_with_flash(
+                        windows=fallback_windows,
+                        gemini_factory=self._gemini_factory,
+                    )
+                else:
+                    segments = build_segments_from_windows(fallback_windows)
+
+            ranges = to_time_ranges(segments=segments, include_qa=True)
+            windows = chunk_video_by_ranges(
                 video_bytes=file_bytes,
+                ranges=ranges,
                 mime_type=payload.mime_type,
                 window_seconds=self._settings.window_seconds,
                 overlap_seconds=self._settings.overlap_seconds,
             )
-            segments = build_segments_from_windows(windows)
-            segment_by_id = {s.segment_id: s for s in segments}
-
             for idx, w in enumerate(windows):
-                segment = segment_by_id.get(f"seg_{idx:04d}")
+                segment = self._match_segment_for_window(segments=segments, start_sec=w.start_sec, end_sec=w.end_sec)
+                segment_label = segment.label if segment else "teaching"
+                if segment_label == "noise":
+                    # Skip indexing noisy windows to control cost and index quality.
+                    continue
                 vec = self._embedder.embed_binary_document(w.payload, w.mime_type)
                 row = self._build_base_row(
                     payload=payload,
@@ -182,9 +249,9 @@ class RagService:
                     embedding=vec,
                     text_content=(segment.summary if segment else None),
                     metadata={
-                        "labels": [segment.label] if segment else ["teaching"],
-                        "segment_id": segment.segment_id if segment else None,
-                        "segment_summary": segment.summary if segment else None,
+                        "labels": [segment_label],
+                        "segment_id": segment.segment_id if segment else f"seg_{idx:04d}",
+                        "segment_summary": segment.summary if segment else "Window from relevant range.",
                         "locator": {
                             "startSec": int(w.start_sec),
                             "endSec": int(w.end_sec),
@@ -218,6 +285,72 @@ class RagService:
             inserted += 1
 
         return inserted
+
+    def _two_stage_search(
+        self,
+        coach_profile_id: str,
+        query_text: str,
+        query_vec: list[float],
+        collection: str,
+        top_k: int,
+        threshold: float,
+    ) -> list[dict[str, Any]]:
+        rows = self._store.fetch_tenant_rows(
+            coach_profile_id=coach_profile_id,
+            collection=collection,
+            limit=self._settings.two_stage_prefilter_limit,
+        )
+        if not rows:
+            return []
+
+        terms = self._tokenize(query_text)
+        if not terms:
+            terms = []
+
+        lexical_ranked = sorted(
+            rows,
+            key=lambda r: self._lexical_score(r, terms),
+            reverse=True,
+        )
+        candidates = lexical_ranked[: max(self._settings.two_stage_candidate_count, top_k)]
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for row in candidates:
+            emb = row.get("embedding")
+            if not isinstance(emb, list) or not emb:
+                continue
+            sim = self._cosine_similarity(query_vec, emb)
+            if sim >= threshold:
+                row_copy = dict(row)
+                row_copy["similarity"] = sim
+                scored.append((sim, row_copy))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [row for _, row in scored[:top_k]]
+
+    def prepare_context(self, request: PrepareContextRequest) -> PrepareContextResponse:
+        items: list[PreparedContextItem] = []
+        for ev in request.evidences[: max(request.max_items, 1)]:
+            if ev.tenant.coach_profile_id != request.tenant.coach_profile_id:
+                continue
+            checklist: list[str] = []
+            if ev.type == "pdf_page":
+                checklist = [
+                    "Check table headers and footnotes on this page.",
+                    "Verify if the relevant statement spans neighboring pages.",
+                    "Cite page number explicitly in final answer.",
+                ]
+            elif ev.type == "video_window":
+                checklist = [
+                    "Locate exact timestamp where concept is explained.",
+                    "Prefer statement at sentence start for clean citation.",
+                    "Return citation in mm:ss format.",
+                ]
+            else:
+                checklist = [
+                    "Use source conservatively.",
+                    "Cite source id in final answer.",
+                ]
+            items.append(PreparedContextItem(evidence=ev, checklist=checklist))
+        return PrepareContextResponse(requestId=request.request_id, preparedItems=items)
 
     def _build_base_row(
         self,
@@ -315,6 +448,18 @@ class RagService:
         )
 
     @staticmethod
+    def _row_matches_tenant(row: dict[str, Any], coach_profile_id: str) -> bool:
+        direct = row.get("coach_profile_id")
+        if direct is not None:
+            return str(direct) == coach_profile_id
+        meta = row.get("metadata") or {}
+        meta_coach = meta.get("coach_profile_id")
+        if meta_coach is not None:
+            return str(meta_coach) == coach_profile_id
+        # Legacy rows without tenant data are treated as non-match in service mode.
+        return False
+
+    @staticmethod
     def _row_content_type_to_evidence_type(content_type: str | None) -> str:
         if content_type == "pdf":
             return "pdf_page"
@@ -352,4 +497,50 @@ class RagService:
         if evidence.type == "video_window" and evidence.locator.start_sec is not None:
             return "Use this video range and cite exact timestamp."
         return "Use this source and cite evidence."
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return [t for t in re.findall(r"[a-zA-Z0-9äöüÄÖÜß]{3,}", text.lower())]
+
+    @staticmethod
+    def _lexical_score(row: dict[str, Any], terms: list[str]) -> float:
+        if not terms:
+            return 0.0
+        meta = row.get("metadata") or {}
+        haystack = " ".join(
+            [
+                str(row.get("title") or ""),
+                str(row.get("original_filename") or ""),
+                str(row.get("text_content") or ""),
+                str(meta.get("segment_summary") or ""),
+                " ".join(str(x) for x in (meta.get("labels") or [])),
+            ]
+        ).lower()
+        score = 0.0
+        for term in terms:
+            if term in haystack:
+                score += 1.0
+        return score
+
+    @staticmethod
+    def _cosine_similarity(a: list[float], b: list[float]) -> float:
+        if not a or not b:
+            return 0.0
+        va = np.array(a, dtype=np.float64)
+        vb = np.array(b, dtype=np.float64)
+        denom = float(np.linalg.norm(va) * np.linalg.norm(vb))
+        if denom == 0.0:
+            return 0.0
+        return float(np.dot(va, vb) / denom)
+
+    @staticmethod
+    def _match_segment_for_window(segments: list[Any], start_sec: int, end_sec: int):
+        best = None
+        best_overlap = -1
+        for seg in segments:
+            overlap = max(0, min(end_sec, seg.end_sec) - max(start_sec, seg.start_sec))
+            if overlap > best_overlap:
+                best = seg
+                best_overlap = overlap
+        return best
 

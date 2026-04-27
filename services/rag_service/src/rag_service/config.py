@@ -28,9 +28,14 @@ class Settings:
     window_seconds: int = 120
     overlap_seconds: int = 10
     video_padding_seconds: int = 30
+    two_stage_enabled: bool = True
+    two_stage_prefilter_limit: int = 1200
+    two_stage_candidate_count: int = 120
 
 
 def load_settings() -> Settings:
+    two_stage_enabled_raw = os.getenv("RAG_TWO_STAGE_ENABLED", "true").strip().lower()
+    two_stage_enabled = two_stage_enabled_raw in {"1", "true", "yes", "on"}
     return Settings(
         auth_token=os.getenv("RAG_SERVICE_AUTH_TOKEN", ""),
         supabase_url=os.getenv("SUPABASE_URL", ""),
@@ -44,5 +49,8 @@ def load_settings() -> Settings:
         window_seconds=_int_env("RAG_INDEX_WINDOW_SECONDS", 120),
         overlap_seconds=_int_env("RAG_INDEX_WINDOW_OVERLAP_SECONDS", 10),
         video_padding_seconds=_int_env("RAG_VIDEO_PADDING_SECONDS", 30),
+        two_stage_enabled=two_stage_enabled,
+        two_stage_prefilter_limit=_int_env("RAG_TWO_STAGE_PREFILTER_LIMIT", 1200),
+        two_stage_candidate_count=_int_env("RAG_TWO_STAGE_CANDIDATE_COUNT", 120),
     )
 

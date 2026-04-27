@@ -1,24 +1,77 @@
-## Video Indexing Flow
+## Flow: Video Indexing
+
+Dieses Dokument beschreibt den Video-Ingestion-Flow inklusive Relevanzlogik, Segment-Metadaten und Window-Embeddings.
+
+---
+
+## Kurzüberblick
+
+- Video wird nicht blind als Ganzes eingebettet.
+- Erst Segmentlogik (Flash best-effort oder Fallback), danach Window-Embedding.
+- Nur relevante Fenster sollen langfristig in den Index.
+
+---
+
+## 1. Detaillierter Ablauf
+
+1) Java markiert Video als `uploaded`.
+2) n8n startet `POST /v1/rag/index` im Python-Service.
+3) Python erkennt `content_type=video`.
+4) Video wird in Windows geschnitten:
+   - Dieser Schritt erfolgt **nach** der Segmentbestimmung nur innerhalb relevanter Zeitbereiche.
+5) Relevanz-/Labeling-Pass (Primärpfad):
+   - Flash sieht das **gesamte Video** und liefert Segmentliste mit `startSec/endSec/label/summary/tags`.
+6) Fallback-Pfad:
+   - Wenn Full-Pass fehlschlägt, nutzt der Service Window-basierten Fallback (oder deterministische Segmentierung).
+7) Für Fenster mit Label `noise` wird Embedding übersprungen (Qualitäts- und Kostenkontrolle).
+8) Für übrige Fenster:
+   - Embedding erstellen
+   - Evidence speichern mit:
+     - `evidence_type=video_window`
+     - `locator.startSec/endSec/paddingSec`
+     - `segment_id`, `segment_summary`, `labels`
+9) Jobstatus aktualisieren (`active`/`error`).
+
+---
+
+## 2. Ablaufdiagramm
 
 ```mermaid
 flowchart TD
   A[Java upload complete] --> B[n8n index workflow]
   B --> C[Python /v1/rag/index]
-  C --> D[Video relevance pass]
-  D --> E[Relevant segments with label + summary]
-  E --> F[Windowing 120s with 10s overlap]
-  F --> G[Gemini Embedding 2 per window]
-  G --> H[Store vector + locator + segment metadata]
-  H --> I[Job status active/error]
+  C --> D[Flash full-video relevance pass]
+  D --> E[Relevant timestamp segments]
+  E --> F[Windowing only inside relevant ranges]
+  F --> G[Skip noise windows]
+  G --> H[Gemini Embedding 2 per remaining window]
+  H --> I[Store vector + locator + segment metadata]
+  I --> J[Job status active/error]
 ```
 
-### Aktueller technischer Stand
+---
 
-- Windowing ist implementiert (120s/10s).
-- Segment-Metadaten sind als Struktur vorgesehen.
-- Der produktive Flash-Relevanzpass ist noch als nächster Ausbauschritt offen; aktuell sichere Fallback-Segmentierung.
+## 3. Antwortphase-Bezug
 
-### Qualitäts-/Kostenregel
+- Retrieval liefert Top Evidences mit Zeitfenstern.
+- In der Chatphase bekommt Flash diese Zeitfenster plus URL (aus Java Resolve).
+- Ziel: präzise Zitate mit `mm:ss`.
 
-- Keine Summary pro Window.
-- Summary/Tags pro Segment reichen für Hybrid-Filter und Explainability.
+---
+
+## 4. Wichtige Wartungshinweise
+
+- Summary/Tags pro Segment (nicht pro Window) sind der Haupthebel für Kosten.
+- Fenstergröße und Overlap beeinflussen sowohl Qualität als auch Vektoranzahl massiv.
+- Bei hohen Datenmengen zuerst Segment-Filter schärfen, bevor an Embedding/DB skaliert wird.
+- Full-pass Fehlertoleranz ist Pflicht: Segment-Fallback darf Indexing nie komplett blockieren.
+
+---
+
+## Relevante Dateien
+
+| Bereich | Datei |
+|---|---|
+| Video splitting | `services/rag_service/src/rag_service/processors.py` |
+| Segment analysis | `services/rag_service/src/rag_service/video_analysis.py` |
+| Index orchestration | `services/rag_service/src/rag_service/service.py` |

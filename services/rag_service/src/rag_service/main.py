@@ -4,11 +4,19 @@ from fastapi import Depends, FastAPI, HTTPException, Header, status
 from dotenv import load_dotenv
 
 from .auth import authorize_service_call
-from .config import Settings, load_settings
+from .config import load_settings
 from .embedding import Embedder
 from .gemini_client import GeminiClientFactory
 from .job_store import InMemoryJobStore
-from .models import IndexPayload, IndexResponse, JobStatusResponse, RetrieveRequest, RetrieveResponse
+from .models import (
+    IndexPayload,
+    IndexResponse,
+    JobStatusResponse,
+    PrepareContextRequest,
+    PrepareContextResponse,
+    RetrieveRequest,
+    RetrieveResponse,
+)
 from .service import RagService
 from .vector_store import SupabaseVectorStore
 
@@ -16,10 +24,12 @@ load_dotenv()
 
 settings = load_settings()
 job_store = InMemoryJobStore()
+gemini_factory = GeminiClientFactory(api_key=settings.gemini_api_key)
 service = RagService(
     settings=settings,
     vector_store=SupabaseVectorStore(settings=settings),
-    embedder=Embedder(gemini_factory=GeminiClientFactory(api_key=settings.gemini_api_key)),
+    embedder=Embedder(gemini_factory=gemini_factory),
+    gemini_factory=gemini_factory,
 )
 
 app = FastAPI(title="CoachApp RAG Service", version="0.1.0")
@@ -40,6 +50,14 @@ def retrieve(
     _: None = Depends(_auth),
 ) -> RetrieveResponse:
     return service.retrieve(payload)
+
+
+@app.post("/v1/rag/prepare-context", response_model=PrepareContextResponse)
+def prepare_context(
+    payload: PrepareContextRequest,
+    _: None = Depends(_auth),
+) -> PrepareContextResponse:
+    return service.prepare_context(payload)
 
 
 @app.post("/v1/rag/index", response_model=IndexResponse)

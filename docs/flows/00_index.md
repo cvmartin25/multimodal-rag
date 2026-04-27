@@ -6,3 +6,5 @@
 - `04_video_indexing_flow.md` – Video Ingestion/Indexing
 - `05_weekly_report_flow.md` – Wöchentliche Coach-Insights
 - `06_security_and_tenancy_flow.md` – Auth/Tenancy/Resolve-Sicherheit
+- `07_indexing_job_orchestration_flow.md` – Job-Lifecycle von Upload bis active/error
+- `90_stellschrauben_tuning.md` – zentrale Tuning- und Feinjustierungsparameter
