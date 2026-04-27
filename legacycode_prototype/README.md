@@ -1,3 +1,5 @@
+## Der gesamte Ordner ist legacy code und dient als Beispiel
+
 # Multimodal RAG with Gemini Embedding
 
 A Retrieval-Augmented Generation application that
