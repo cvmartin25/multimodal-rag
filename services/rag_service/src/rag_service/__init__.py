@@ -1,0 +1,2 @@
+"""CoachApp RAG service package."""
+
