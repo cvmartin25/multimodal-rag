@@ -1,7 +1,6 @@
 
-welche infos oder code teile muss cursor kennen für das python projekt, damit er gleich richtig baut
-
-Damit Cursor im Python‑Projekt “gleich richtig baut”, muss er vor allem eure harten Contracts aus dem Java‑Backbone kennen (Tenancy/IDs/Status/StorageKeys) und das n8n‑Integrationsmuster. Das sind die wichtigsten Infos/Code‑Stellen, die du ihm (als Kontext) mitgeben solltest:
+Hier eine Übersicht über alle relevanten Abläufe im JavaCode. 
+Details in docs/java_files
 
 #1) Tenancy & Rolle: coachProfileId kommt aus Java/DB (nicht aus Client)
 Warum wichtig: Python darf niemals “coachId” aus dem Chat annehmen; alles muss über verifizierten Kontext laufen (Java/n8n).
