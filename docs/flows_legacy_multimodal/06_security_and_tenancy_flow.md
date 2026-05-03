@@ -9,7 +9,6 @@ Dieses Dokument beschreibt, wie Tenancy und Zugriffssicherheit im Zielsystem dur
 - Tenancy-Quelle ist Java (DB/Session), nicht der Client.
 - n8n und Python arbeiten nur mit trusted Kontext.
 - Presigned URLs werden ausschließlich im Java-Backend erzeugt.
-- Python liefert nur Storage-Referenzen und Locator-Metadaten, keine öffentlichen Media-Links.
 
 ---
 
@@ -54,7 +53,6 @@ sequenceDiagram
 - Service-to-service Auth via Bearer Secret (MVP), später HMAC/mTLS/JWT.
 - Presigned URLs ausschließlich serverseitig (Java) erzeugen.
 - URLs kurz halten (Standard 300s), keine persistente Speicherung in Chat-Memory.
-- Tenant-Filter sowohl in Retrieval-RPC als auch bei Nachfilterung erzwingen.
 
 ---
 

@@ -16,12 +16,12 @@ Dieses Dokument beschreibt den Soll-Ablauf für den Job-Lifecycle ab `uploaded` 
 
 1) Frontend führt Upload über Java aus (`begin-upload`, `complete-upload`).
 2) Java setzt Medium auf `uploaded`.
-3) Java stößt n8n Workflow `index-start` an (Payload nur IDs + trusted `coachProfileId` + presigned `contentUrl`).
+3) Java stößt n8n Workflow `index-start` an (Payload nur IDs + trusted `coachProfileId`).
 4) n8n erstellt/aktualisiert Job-Kontext und ruft Python `POST /v1/rag/index`.
 5) Python verarbeitet:
    - `text`: chunk -> embed -> store
-   - `pdf`: page render + extracted_text + multimodal embed -> store
-   - `video`: relevance segments + whisper transcript + span embed -> store
+   - `pdf`: page -> embed -> store
+   - `video`: window -> classify -> embed -> store
 6) Python liefert Job-Ergebnis (`succeeded`/`failed`) und Anzahl inserted records.
 7) n8n (oder Java via Polling) setzt Java-Status:
    - Erfolg: `processing -> active`
@@ -51,5 +51,4 @@ Dieses Dokument beschreibt den Soll-Ablauf für den Job-Lifecycle ab `uploaded` 
 |---|---|
 | Python index endpoint | `services/rag_service/src/rag_service/main.py` |
 | Index processing logic | `services/rag_service/src/rag_service/service.py` |
-| DB schema target | `services/rag_service/schema.sql` |
 | Build target design | `docs/building/plan_initial_overview.md` |

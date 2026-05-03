@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import base64
 import re
 from typing import Any
 
 import numpy as np
 
 from .config import Settings
+from .content_loader import load_content_bytes
 from .embedding import Embedder
 from .gemini_client import GeminiClientFactory
+from .openai_client import OpenAIClientFactory
 from .models import (
     DisplayData,
     Evidence,
@@ -25,14 +26,15 @@ from .models import (
     TenantContext,
 )
 from .processors import (
+    build_transcript_spans,
     chunk_audio,
     chunk_text,
-    chunk_video_by_ranges,
     chunk_video,
     detect_content_type,
     get_video_duration_seconds,
     split_pdf_to_pages,
 )
+from .transcription import transcribe_video, transcribe_video_ranges
 from .vector_store import SupabaseVectorStore
 from .video_analysis import (
     analyze_full_video_with_flash,
@@ -49,11 +51,13 @@ class RagService:
         vector_store: SupabaseVectorStore,
         embedder: Embedder,
         gemini_factory: GeminiClientFactory,
+        openai_factory: OpenAIClientFactory,
     ) -> None:
         self._settings = settings
         self._store = vector_store
         self._embedder = embedder
         self._gemini_factory = gemini_factory
+        self._openai_factory = openai_factory
 
     def retrieve(self, request: RetrieveRequest) -> RetrieveResponse:
         options = request.options
@@ -85,6 +89,7 @@ class RagService:
                 threshold=threshold,
                 content_type=None,
                 collection=collection,
+                coach_profile_id=request.tenant.coach_profile_id,
             )
 
         evidences: list[Evidence] = []
@@ -125,9 +130,23 @@ class RagService:
         )
 
     def run_indexing(self, payload: IndexPayload) -> int:
-        file_bytes = base64.b64decode(payload.content_base64)
+        file_bytes = load_content_bytes(content_base64=payload.content_base64, content_url=payload.content_url)
         content_type = detect_content_type(payload.mime_type, payload.original_filename)
         collection = payload.collection or self._settings.default_collection
+        self._store.upsert_source(
+            {
+                "id": payload.source_id,
+                "coach_profile_id": payload.tenant.coach_profile_id,
+                "source_kind": payload.source_kind,
+                "title": payload.title,
+                "original_filename": payload.original_filename,
+                "mime_type": payload.mime_type,
+                "storage_bucket": payload.content_bucket,
+                "storage_key": payload.content_key,
+                "language": self._settings.transcript_language,
+                "metadata": {"request_id": payload.request_id},
+            }
+        )
 
         inserted = 0
         if content_type == "text":
@@ -153,7 +172,12 @@ class RagService:
                 inserted += 1
 
         elif content_type == "pdf":
-            pages = split_pdf_to_pages(file_bytes)
+            pages = split_pdf_to_pages(
+                file_bytes,
+                target_width=self._settings.pdf_render_target_width,
+                image_format=self._settings.pdf_render_format,
+                image_quality=self._settings.pdf_render_quality,
+            )
             for idx, page in enumerate(pages):
                 vec = self._embedder.embed_binary_document(page.image_bytes, page.image_mime_type)
                 row = self._build_base_row(
@@ -163,12 +187,20 @@ class RagService:
                     chunk_index=idx,
                     chunk_total=len(pages),
                     embedding=vec,
-                    text_content=page.extracted_text[:10000] if page.extracted_text else None,
+                    text_content=page.extracted_text[:10000] if page.extracted_text else "",
                     metadata={
-                        "labels": ["teaching"],
+                        "labels": ["teaching", "proof"],
                         "locator": {"pageNumber": page.page_number},
-                        "storage_refs": self._default_storage_refs(payload, page_number=page.page_number),
-                        "hint_for_llm": f"Read PDF page {page.page_number}.",
+                        "storage_refs": self._default_storage_refs(
+                            payload,
+                            page_number=page.page_number,
+                            extension=page.image_extension,
+                        ),
+                        "hint_for_llm": f"Nutze Seite {page.page_number} als Proof-Quelle und zitiere exakt.",
+                        "extraction_quality": page.extraction_quality,
+                        "layout_complexity": page.layout_complexity,
+                        "has_tables": page.has_tables,
+                        "has_figures": page.has_figures,
                     },
                 )
                 self._store.insert_record(row)
@@ -210,55 +242,64 @@ class RagService:
                     gemini_factory=self._gemini_factory,
                 )
             if not segments:
-                # Fallback to deterministic windows + per-window classification fallback.
                 fallback_windows = chunk_video(
                     video_bytes=file_bytes,
                     mime_type=payload.mime_type,
                     window_seconds=self._settings.window_seconds,
                     overlap_seconds=self._settings.overlap_seconds,
                 )
-                if payload.analyze_video_relevance:
-                    segments = analyze_windows_with_flash(
-                        windows=fallback_windows,
-                        gemini_factory=self._gemini_factory,
-                    )
-                else:
-                    segments = build_segments_from_windows(fallback_windows)
+                segments = (
+                    analyze_windows_with_flash(windows=fallback_windows, gemini_factory=self._gemini_factory)
+                    if payload.analyze_video_relevance
+                    else build_segments_from_windows(fallback_windows)
+                )
 
             ranges = to_time_ranges(segments=segments, include_qa=True)
-            windows = chunk_video_by_ranges(
+            transcript_segments = transcribe_video_ranges(
                 video_bytes=file_bytes,
-                ranges=ranges,
                 mime_type=payload.mime_type,
-                window_seconds=self._settings.window_seconds,
-                overlap_seconds=self._settings.overlap_seconds,
+                ranges=ranges,
+                openai_factory=self._openai_factory,
+                model=self._settings.whisper_model,
+                language=self._settings.transcript_language,
             )
-            for idx, w in enumerate(windows):
-                segment = self._match_segment_for_window(segments=segments, start_sec=w.start_sec, end_sec=w.end_sec)
-                segment_label = segment.label if segment else "teaching"
-                if segment_label == "noise":
-                    # Skip indexing noisy windows to control cost and index quality.
-                    continue
-                vec = self._embedder.embed_binary_document(w.payload, w.mime_type)
+            if not transcript_segments:
+                transcript_segments = transcribe_video(
+                    video_bytes=file_bytes,
+                    mime_type=payload.mime_type,
+                    openai_factory=self._openai_factory,
+                    model=self._settings.whisper_model,
+                    language=self._settings.transcript_language,
+                )
+
+            spans = build_transcript_spans(
+                segments=transcript_segments,
+                target_seconds=self._settings.transcript_target_span_seconds,
+                max_seconds=self._settings.transcript_max_span_seconds,
+            )
+            for idx, span in enumerate(spans):
+                vec = self._embedder.embed_text_document(span.text)
+                span_start = int(max(0, span.start_sec))
+                span_end = int(min(full_duration, max(span.end_sec, span.start_sec + 1)))
                 row = self._build_base_row(
                     payload=payload,
                     collection=collection,
-                    evidence_type="video_window",
+                    evidence_type="video_span",
                     chunk_index=idx,
-                    chunk_total=len(windows),
+                    chunk_total=len(spans),
                     embedding=vec,
-                    text_content=(segment.summary if segment else None),
+                    text_content=span.text,
                     metadata={
-                        "labels": [segment_label],
-                        "segment_id": segment.segment_id if segment else f"seg_{idx:04d}",
-                        "segment_summary": segment.summary if segment else "Window from relevant range.",
+                        "labels": ["teaching", "proof", "transcript"],
+                        "segment_id": f"ts_{idx:04d}",
+                        "segment_summary": "Transcript span from Whisper segmentation.",
                         "locator": {
-                            "startSec": int(w.start_sec),
-                            "endSec": int(w.end_sec),
-                            "paddingSec": self._settings.video_padding_seconds,
+                            "startSec": span_start,
+                            "endSec": span_end,
+                            "paddingSec": 0,
                         },
                         "storage_refs": self._default_storage_refs(payload),
-                        "hint_for_llm": "Inspect this video time range for a precise citation.",
+                        "hint_for_llm": "Nutze diese Transcript-Spanne fuer Zeitstempel-Zitat im IEEE-Stil.",
                     },
                 )
                 self._store.insert_record(row)
@@ -336,13 +377,13 @@ class RagService:
                 checklist = [
                     "Check table headers and footnotes on this page.",
                     "Verify if the relevant statement spans neighboring pages.",
-                    "Cite page number explicitly in final answer.",
+                    "Cite page number explicitly in IEEE style, e.g. [1] PDF ... Seite X.",
                 ]
-            elif ev.type == "video_window":
+            elif ev.type in {"video_window", "video_span"}:
                 checklist = [
                     "Locate exact timestamp where concept is explained.",
                     "Prefer statement at sentence start for clean citation.",
-                    "Return citation in mm:ss format.",
+                    "Return IEEE style citation, e.g. [2] Video ... Minute mm:ss.",
                 ]
             else:
                 checklist = [
@@ -389,7 +430,7 @@ class RagService:
     def _to_legacy_content_type(evidence_type: str) -> str:
         if evidence_type == "pdf_page":
             return "pdf"
-        if evidence_type == "video_window":
+        if evidence_type in {"video_window", "video_span"}:
             return "video"
         if evidence_type == "audio_window":
             return "audio"
@@ -397,11 +438,16 @@ class RagService:
             return "text"
         return evidence_type
 
-    def _default_storage_refs(self, payload: IndexPayload, page_number: int | None = None) -> list[dict[str, str]]:
+    def _default_storage_refs(
+        self,
+        payload: IndexPayload,
+        page_number: int | None = None,
+        extension: str = "png",
+    ) -> list[dict[str, str]]:
         if payload.content_bucket and payload.content_key:
             key = payload.content_key
             if page_number is not None:
-                key = f"{payload.content_key.rstrip('/')}/pages/{page_number}.png"
+                key = f"{payload.content_key.rstrip('/')}/pages/{page_number}.{extension}"
             return [{"kind": "s3", "bucket": payload.content_bucket, "key": key}]
         # fallback when S3 ref is not yet integrated
         return [
@@ -464,7 +510,7 @@ class RagService:
         if content_type == "pdf":
             return "pdf_page"
         if content_type == "video":
-            return "video_window"
+            return "video_span"
         if content_type == "audio":
             return "audio_window"
         if content_type == "text":
@@ -475,7 +521,7 @@ class RagService:
     def _guess_source_kind(evidence_type: str) -> str:
         if evidence_type in {"pdf_page", "text_chunk"}:
             return "document"
-        if evidence_type == "video_window":
+        if evidence_type in {"video_window", "video_span"}:
             return "video"
         if evidence_type == "audio_window":
             return "audio"
@@ -485,7 +531,7 @@ class RagService:
     def _build_display_label(evidence_type: str, locator: dict[str, Any]) -> str:
         if evidence_type == "pdf_page" and locator.get("pageNumber"):
             return f"Seite {locator['pageNumber']}"
-        if evidence_type in {"video_window", "audio_window"} and locator.get("startSec") is not None:
+        if evidence_type in {"video_window", "video_span", "audio_window"} and locator.get("startSec") is not None:
             start = int(locator["startSec"])
             return f"ab {start // 60:02d}:{start % 60:02d}"
         return evidence_type
@@ -493,10 +539,13 @@ class RagService:
     @staticmethod
     def _default_hint_for(evidence: Evidence) -> str:
         if evidence.type == "pdf_page" and evidence.locator.page_number:
-            return f"Focus on page {evidence.locator.page_number} and cite clearly."
-        if evidence.type == "video_window" and evidence.locator.start_sec is not None:
-            return "Use this video range and cite exact timestamp."
-        return "Use this source and cite evidence."
+            return (
+                f"Focus on page {evidence.locator.page_number}. "
+                "Respond in own words and cite in IEEE style [n] PDF <title> Seite <x>."
+            )
+        if evidence.type in {"video_window", "video_span"} and evidence.locator.start_sec is not None:
+            return "Respond in own words and cite timestamp in IEEE style [n] Video <title> Minute mm:ss."
+        return "Use this source, respond in own words, and cite in IEEE style."
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:

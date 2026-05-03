@@ -20,6 +20,7 @@ class Settings:
     supabase_url: str
     supabase_service_key: str
     gemini_api_key: str
+    openai_api_key: str
     supabase_table: str = "documents"
     supabase_match_rpc: str = "match_documents"
     default_collection: str = "default"
@@ -31,6 +32,13 @@ class Settings:
     two_stage_enabled: bool = True
     two_stage_prefilter_limit: int = 1200
     two_stage_candidate_count: int = 120
+    whisper_model: str = "whisper-1"
+    transcript_language: str = "de"
+    transcript_target_span_seconds: int = 40
+    transcript_max_span_seconds: int = 60
+    pdf_render_target_width: int = 1280
+    pdf_render_format: str = "jpeg"
+    pdf_render_quality: int = 80
 
 
 def load_settings() -> Settings:
@@ -41,8 +49,9 @@ def load_settings() -> Settings:
         supabase_url=os.getenv("SUPABASE_URL", ""),
         supabase_service_key=os.getenv("SUPABASE_SERVICE_KEY", ""),
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-        supabase_table=os.getenv("RAG_SUPABASE_TABLE", "documents"),
-        supabase_match_rpc=os.getenv("RAG_SUPABASE_MATCH_RPC", "match_documents"),
+        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+        supabase_table=os.getenv("RAG_SUPABASE_TABLE", "rag_chunks"),
+        supabase_match_rpc=os.getenv("RAG_SUPABASE_MATCH_RPC", "match_rag_chunks"),
         default_collection=os.getenv("RAG_DEFAULT_COLLECTION", "default"),
         default_topk=_int_env("RAG_TOPK_DEFAULT", 8),
         default_topn=_int_env("RAG_TOPN_DEFAULT", 3),
@@ -52,5 +61,12 @@ def load_settings() -> Settings:
         two_stage_enabled=two_stage_enabled,
         two_stage_prefilter_limit=_int_env("RAG_TWO_STAGE_PREFILTER_LIMIT", 1200),
         two_stage_candidate_count=_int_env("RAG_TWO_STAGE_CANDIDATE_COUNT", 120),
+        whisper_model=os.getenv("RAG_WHISPER_MODEL", "whisper-1"),
+        transcript_language=os.getenv("RAG_TRANSCRIPT_LANGUAGE", "de"),
+        transcript_target_span_seconds=_int_env("RAG_TRANSCRIPT_TARGET_SPAN_SECONDS", 40),
+        transcript_max_span_seconds=_int_env("RAG_TRANSCRIPT_MAX_SPAN_SECONDS", 60),
+        pdf_render_target_width=_int_env("RAG_PDF_RENDER_TARGET_WIDTH", 1280),
+        pdf_render_format=os.getenv("RAG_PDF_RENDER_FORMAT", "jpeg"),
+        pdf_render_quality=_int_env("RAG_PDF_RENDER_QUALITY", 80),
     )
 

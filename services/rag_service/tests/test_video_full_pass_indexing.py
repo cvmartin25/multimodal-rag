@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 
 from rag_service.config import Settings
 from rag_service.models import IndexPayload
-from rag_service.processors import TimeWindow
+from rag_service.processors import TranscriptSegment
 from rag_service.service import RagService
 from rag_service.video_analysis import VideoSegment
 
@@ -23,6 +23,9 @@ class _FakeVectorStore:
 
     def insert_record(self, row):
         self.rows.append(row)
+        return row
+
+    def upsert_source(self, row):
         return row
 
 
@@ -38,6 +41,10 @@ class _FakeGeminiFactory:
     pass
 
 
+class _FakeOpenAIFactory:
+    pass
+
+
 class VideoFullPassIndexingTests(unittest.TestCase):
     def test_full_pass_segments_drive_range_windowing(self):
         store = _FakeVectorStore()
@@ -47,12 +54,16 @@ class VideoFullPassIndexingTests(unittest.TestCase):
                 supabase_url="u",
                 supabase_service_key="k",
                 gemini_api_key="g",
+                openai_api_key="o",
                 window_seconds=120,
                 overlap_seconds=10,
+                transcript_target_span_seconds=40,
+                transcript_max_span_seconds=60,
             ),
             vector_store=store,
             embedder=_FakeEmbedder(),
             gemini_factory=_FakeGeminiFactory(),
+            openai_factory=_FakeOpenAIFactory(),
         )
 
         payload = IndexPayload.model_validate(
@@ -92,27 +103,23 @@ class VideoFullPassIndexingTests(unittest.TestCase):
             ),
         ]
 
-        relevant_windows = [
-            TimeWindow(start_sec=60, end_sec=180, payload=b"w1", mime_type="video/mp4"),
-            TimeWindow(start_sec=170, end_sec=240, payload=b"w2", mime_type="video/mp4"),
+        transcript_segments = [
+            TranscriptSegment(start_sec=60.0, end_sec=85.0, text="Segment A"),
+            TranscriptSegment(start_sec=86.0, end_sec=110.0, text="Segment B"),
+            TranscriptSegment(start_sec=150.0, end_sec=185.0, text="Segment C"),
         ]
 
         with patch("rag_service.service.get_video_duration_seconds", return_value=500), patch(
             "rag_service.service.analyze_full_video_with_flash", return_value=full_pass_segments
-        ), patch("rag_service.service.chunk_video_by_ranges", return_value=relevant_windows) as range_chunk_mock:
+        ), patch("rag_service.service.transcribe_video_ranges", return_value=transcript_segments):
             inserted = service.run_indexing(payload)
 
         self.assertEqual(inserted, 2)
         self.assertEqual(len(store.rows), 2)
-        self.assertEqual(store.rows[0]["metadata"]["evidence_type"], "video_window")
-        self.assertEqual(store.rows[0]["metadata"]["segment_summary"], "Erklaert Finanzierungsteil A.")
+        self.assertEqual(store.rows[0]["metadata"]["evidence_type"], "video_span")
+        self.assertEqual(store.rows[0]["metadata"]["segment_summary"], "Transcript span from Whisper segmentation.")
         self.assertEqual(store.rows[0]["metadata"]["locator"]["startSec"], 60)
-        self.assertEqual(store.rows[1]["metadata"]["locator"]["endSec"], 240)
-
-        called_ranges = range_chunk_mock.call_args.kwargs["ranges"]
-        self.assertEqual(len(called_ranges), 1)  # noise segment excluded before chunking
-        self.assertEqual(called_ranges[0].start_sec, 60)
-        self.assertEqual(called_ranges[0].end_sec, 240)
+        self.assertEqual(store.rows[1]["metadata"]["locator"]["endSec"], 185)
 
 
 if __name__ == "__main__":

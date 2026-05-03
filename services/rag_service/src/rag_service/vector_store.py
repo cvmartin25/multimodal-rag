@@ -19,6 +19,10 @@ class SupabaseVectorStore:
         result = self._client.table(self._settings.supabase_table).insert(row).execute()
         return result.data[0]
 
+    def upsert_source(self, row: dict[str, Any]) -> dict[str, Any]:
+        result = self._client.table("rag_sources").upsert(row).execute()
+        return result.data[0]
+
     def search(
         self,
         query_embedding: list[float],
@@ -26,6 +30,7 @@ class SupabaseVectorStore:
         threshold: float,
         content_type: str | None = None,
         collection: str | None = None,
+        coach_profile_id: str | None = None,
     ) -> list[dict[str, Any]]:
         result = self._client.rpc(
             self._settings.supabase_match_rpc,
@@ -35,6 +40,7 @@ class SupabaseVectorStore:
                 "match_count": top_k,
                 "filter_type": content_type,
                 "filter_collection": collection,
+                "filter_coach_profile_id": coach_profile_id,
             },
         ).execute()
         return result.data or []

@@ -17,6 +17,9 @@ class _FakeVectorStore:
     def __init__(self) -> None:
         self.search_called = False
 
+    def upsert_source(self, row):
+        return row
+
     def fetch_tenant_rows(self, coach_profile_id: str, collection: str | None, limit: int):
         return [
             {
@@ -27,7 +30,7 @@ class _FakeVectorStore:
                 "text_content": "In diesem Segment wird der Beleihungsauslauf erklärt.",
                 "metadata": {
                     "coach_profile_id": coach_profile_id,
-                    "evidence_type": "video_window",
+                    "evidence_type": "video_span",
                     "source_kind": "video",
                     "source_id": "vid_1",
                     "locator": {"startSec": 100, "endSec": 220, "paddingSec": 30},
@@ -45,7 +48,7 @@ class _FakeVectorStore:
                 "text_content": "Dieser Abschnitt ist thematisch anders.",
                 "metadata": {
                     "coach_profile_id": coach_profile_id,
-                    "evidence_type": "video_window",
+                    "evidence_type": "video_span",
                     "source_kind": "video",
                     "source_id": "vid_2",
                     "locator": {"startSec": 300, "endSec": 420, "paddingSec": 30},
@@ -72,6 +75,10 @@ class _FakeGeminiFactory:
     pass
 
 
+class _FakeOpenAIFactory:
+    pass
+
+
 class RetrievalTwoStageTests(unittest.TestCase):
     def test_two_stage_prefilter_and_rerank_returns_expected_evidence(self):
         settings = Settings(
@@ -79,6 +86,7 @@ class RetrievalTwoStageTests(unittest.TestCase):
             supabase_url="u",
             supabase_service_key="k",
             gemini_api_key="g",
+            openai_api_key="o",
             two_stage_enabled=True,
             two_stage_prefilter_limit=500,
             two_stage_candidate_count=20,
@@ -88,6 +96,7 @@ class RetrievalTwoStageTests(unittest.TestCase):
             vector_store=_FakeVectorStore(),
             embedder=_FakeEmbedder(),
             gemini_factory=_FakeGeminiFactory(),
+            openai_factory=_FakeOpenAIFactory(),
         )
 
         req = RetrieveRequest.model_validate(
@@ -104,7 +113,7 @@ class RetrievalTwoStageTests(unittest.TestCase):
         self.assertEqual(res.request_id, "req-1")
         self.assertEqual(len(res.evidences), 1)
         self.assertEqual(res.evidences[0].id, "row_good")
-        self.assertEqual(res.evidences[0].type, "video_window")
+        self.assertEqual(res.evidences[0].type, "video_span")
         self.assertEqual(res.evidences[0].locator.start_sec, 100)
         self.assertEqual(res.debug["twoStage"], True)
 

@@ -8,8 +8,8 @@ Dieses Dokument erklärt die übergreifende Architektur, damit zukünftige Ände
 
 - **Java Backend** ist Source of Truth für Auth, Tenancy (`coachProfileId`), Storage-Policies und Status.
 - **n8n** ist Chat-Orchestrator (Memory, Tool Calling, Agent-Entscheidung, LLM-Aufruf).
-- **Python RAG Service** macht Indexing und Retrieval (Proof-first, Evidence ohne presigned URLs).
-- **Supabase** speichert Quellen und Chunks in `rag_sources` und `rag_chunks`.
+- **Python RAG Service** macht Indexing und Retrieval (Evidence ohne presigned URLs).
+- **Supabase** speichert Embeddings + Evidence-Metadaten.
 - **S3** hält Originalmedien und Derivate (z. B. PDF-Seitenbilder).
 
 ---
@@ -33,7 +33,6 @@ Dieses Dokument erklärt die übergreifende Architektur, damit zukünftige Ände
 ### Python RAG Service
 
 - Indexiert Text/PDF/Video/Audio in Vektor- und Evidence-Form.
-- Video ist Transcript-first (`video_span`) statt multimodaler Video-Window-Embeddings.
 - Führt semantisches Retrieval tenant-sicher aus.
 - Liefert strukturierte Evidences (`storageRefs`, `locator`, `labels`, `hintForLLM`).
 
@@ -64,7 +63,7 @@ flowchart LR
 - Python liefert **niemals** dauerhafte URLs, nur `storageRefs`.
 - n8n ruft Java Resolve im **Batch** auf (kein N+1 pro Evidence).
 - Tenancy ist immer serverseitig: `coachProfileId` aus Java-Kontext, nie aus Usertext.
-- Antwortmodus ist Proof-first: Antwort in eigenen Worten + IEEE-Quellenliste.
+- Q&A-Quellen sind markiert und standardmäßig nicht als primäre Faktenquelle zu behandeln.
 
 ---
 
@@ -82,5 +81,4 @@ flowchart LR
 |---|---|
 | Python API | `services/rag_service/src/rag_service/main.py` |
 | Python Orchestrierung | `services/rag_service/src/rag_service/service.py` |
-| Python Schema | `services/rag_service/schema.sql` |
 | Flows-Spezifikation | `docs/building/plan_initial_overview.md` |

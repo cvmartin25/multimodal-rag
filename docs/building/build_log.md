@@ -1,5 +1,33 @@
 ## Build Log
 
+### 2026-04-30
+
+- Proof-First Architektur im Python-RAG-Service umgesetzt (Workmode bewusst nicht umgesetzt).
+- Video-Indexing auf Transcript-first umgestellt:
+  - Relevanz-Segmente via Flash (bestehender Full-Pass/Fallback weiter genutzt).
+  - Transkription via OpenAI Audio Transcriptions API (`whisper-1`, Segment-Timestamps, Sprache default `de`).
+  - Span-Bildung auf variable Zielgroesse (~40s, max ~60s), Speicherung als `video_span` mit absoluten `startSec/endSec`.
+  - Embeddings fuer Video nur noch auf Transcript-Text (Gemini Embedding 2), nicht mehr auf Videofenster.
+- PDF-Indexing erweitert:
+  - Seite wird auf fixe Zielbreite gerendert (default 1280px, JPEG default).
+  - `extracted_text` wird best-effort lokal aus dem Text-Layer je Seite gespeichert.
+  - Meta-Signale je Seite ergänzt: `extraction_quality`, `layout_complexity`, `has_tables`, `has_figures`.
+- Retrieval/Context-Hints auf IEEE-Zitationsstil ausgerichtet (`[n] PDF ... Seite X`, `[n] Video ... Minute mm:ss`).
+- Neues DB-Schema in `services/rag_service/schema.sql` entworfen und eingebaut:
+  - `rag_sources` + `rag_chunks`
+  - `embedding vector(3072)` fix für Gemini Embedding 2
+  - `match_rag_chunks(...)` RPC inkl. Tenant-Filter.
+- Service-Konfiguration erweitert:
+  - neue ENV-Felder für Whisper, Transcript-Chunking, PDF-Rendering, OpenAI-Key
+  - Default-Supabase-Ziel auf `rag_chunks`/`match_rag_chunks` gesetzt.
+- Neue Module ergänzt:
+  - `content_loader.py` (Base64/Presigned-URL Input)
+  - `openai_client.py`
+  - `transcription.py`
+- Unit-Tests angepasst und erfolgreich ausgeführt:
+  - `python -m unittest discover -s services/rag_service/tests -p "test_*.py" -v`
+  - Ergebnis: 2/2 Tests OK.
+
 ### 2026-04-27
 
 - Neuer Python-Service unter `services/rag_service/` aufgebaut (FastAPI).

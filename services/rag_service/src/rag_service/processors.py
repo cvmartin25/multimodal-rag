@@ -64,23 +64,78 @@ class PdfPage:
     page_number: int
     image_bytes: bytes
     image_mime_type: str
+    image_extension: str
     extracted_text: str
+    extraction_quality: str
+    layout_complexity: float
+    has_tables: bool
+    has_figures: bool
 
 
-def split_pdf_to_pages(pdf_bytes: bytes) -> list[PdfPage]:
+def _pdf_image_export(format_name: str) -> tuple[str, str]:
+    lowered = format_name.lower()
+    if lowered in {"jpg", "jpeg"}:
+        return "jpeg", "jpg"
+    if lowered == "webp":
+        return "webp", "webp"
+    return "png", "png"
+
+
+def _estimate_layout_complexity(page: fitz.Page, extracted_text: str) -> float:
+    drawings = page.get_drawings()
+    image_info = page.get_images(full=True)
+    block_count = len(page.get_text("blocks"))
+    char_count = len(extracted_text.strip())
+    # Lightweight heuristic between 0.0 and 1.0.
+    raw_score = (
+        min(len(drawings), 20) * 0.02
+        + min(len(image_info), 10) * 0.03
+        + min(block_count, 100) * 0.004
+        + (0.1 if char_count < 50 else 0.0)
+    )
+    return round(min(raw_score, 1.0), 3)
+
+
+def _estimate_extraction_quality(text: str) -> str:
+    clean = text.strip()
+    if not clean:
+        return "low"
+    if len(clean) < 120:
+        return "medium"
+    return "high"
+
+
+def split_pdf_to_pages(
+    pdf_bytes: bytes,
+    target_width: int = 1280,
+    image_format: str = "jpeg",
+    image_quality: int = 80,
+) -> list[PdfPage]:
     pages: list[PdfPage] = []
+    export_format, extension = _pdf_image_export(image_format)
+    quality = max(30, min(image_quality, 95))
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         for i in range(len(doc)):
             page = doc[i]
             text = page.get_text("text")
-            pix = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
-            png_bytes = pix.tobytes("png")
+            page_width = max(page.rect.width, 1.0)
+            scale = max(target_width / page_width, 0.5)
+            pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+            image_bytes = pix.tobytes(output=export_format, jpg_quality=quality)
+            layout_complexity = _estimate_layout_complexity(page=page, extracted_text=text or "")
+            has_tables = bool(page.find_tables().tables)
+            has_figures = bool(page.get_images(full=True))
             pages.append(
                 PdfPage(
                     page_number=i + 1,  # 1-based
-                    image_bytes=png_bytes,
-                    image_mime_type="image/png",
+                    image_bytes=image_bytes,
+                    image_mime_type=f"image/{'jpeg' if extension == 'jpg' else extension}",
+                    image_extension=extension,
                     extracted_text=text or "",
+                    extraction_quality=_estimate_extraction_quality(text or ""),
+                    layout_complexity=layout_complexity,
+                    has_tables=has_tables,
+                    has_figures=has_figures,
                 )
             )
     return pages
@@ -98,6 +153,41 @@ class TimeWindow:
 class TimeRange:
     start_sec: int
     end_sec: int
+
+
+@dataclass
+class TranscriptSegment:
+    start_sec: float
+    end_sec: float
+    text: str
+
+
+def build_transcript_spans(
+    segments: list[TranscriptSegment],
+    target_seconds: int = 40,
+    max_seconds: int = 60,
+) -> list[TranscriptSegment]:
+    if not segments:
+        return []
+    cleaned = [s for s in segments if s.text.strip() and s.end_sec > s.start_sec]
+    if not cleaned:
+        return []
+    spans: list[TranscriptSegment] = []
+    current: TranscriptSegment | None = None
+    for seg in cleaned:
+        if current is None:
+            current = TranscriptSegment(start_sec=seg.start_sec, end_sec=seg.end_sec, text=seg.text.strip())
+            continue
+        next_duration = seg.end_sec - current.start_sec
+        if next_duration <= target_seconds or next_duration <= max_seconds:
+            current.end_sec = seg.end_sec
+            current.text = f"{current.text} {seg.text.strip()}".strip()
+        else:
+            spans.append(current)
+            current = TranscriptSegment(start_sec=seg.start_sec, end_sec=seg.end_sec, text=seg.text.strip())
+    if current is not None:
+        spans.append(current)
+    return spans
 
 
 def _chunk_media_with_pydub(audio_bytes: bytes, fmt: str, seconds: int) -> list[bytes]:

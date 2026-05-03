@@ -8,7 +8,7 @@ Dieses Dokument beschreibt den geplanten Reporting-Flow für “häufigste Frage
 
 - Ziel: Coaches sollen ohne Rohchat-Analyse sehen, welche Themen häufig unklar sind.
 - Trigger: 1x pro Woche per n8n Cron.
-- Ergebnis: kompakter Report mit Top-Themen, Beispielen, Trends, Content-Gaps (inkl. Evidence-Güte-Indikatoren).
+- Ergebnis: kompakter Report mit Top-Themen, Beispielen, Trends, Content-Gaps.
 
 ---
 
@@ -23,7 +23,7 @@ Dieses Dokument beschreibt den geplanten Reporting-Flow für “häufigste Frage
 5) Pro Thema werden Kennzahlen gebildet:
    - Häufigkeit
    - Veränderung zur Vorwoche
-   - optional negative Feedback-Rate / “no evidence” Rate / Proof-Rate
+   - optional negative Feedback-Rate / “no evidence” Rate
 6) LLM erstellt kurze coach-lesbare Zusammenfassung.
 7) Report wird in `coach_weekly_reports` gespeichert.
 8) Frontend/Coach-Dashboard zeigt den Report.
@@ -59,4 +59,3 @@ flowchart TD
 - Paraphrasierte Beispielfragen (kein unnötiges Vollzitat)
 - Trend zur Vorwoche
 - Content-Gaps (häufige Fragen mit schwacher Evidenz/Feedback)
-- Optional: Anteil Antworten mit IEEE-konformen Referenzen

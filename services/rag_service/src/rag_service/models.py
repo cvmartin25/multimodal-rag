@@ -5,7 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-EvidenceType = Literal["pdf_page", "video_window", "audio_window", "image", "text_chunk"]
+EvidenceType = Literal["pdf_page", "video_span", "video_window", "audio_window", "image", "text_chunk"]
 SourceKind = Literal["document", "video", "audio", "image", "text"]
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
 
@@ -112,7 +112,8 @@ class IndexPayload(BaseModel):
     original_filename: str = Field(alias="originalFilename")
     mime_type: str = Field(alias="mimeType")
     collection: str | None = None
-    content_base64: str = Field(alias="contentBase64")
+    content_base64: str | None = Field(default=None, alias="contentBase64")
+    content_url: str | None = Field(default=None, alias="contentUrl")
     analyze_video_relevance: bool = Field(default=True, alias="analyzeVideoRelevance")
     content_bucket: str | None = Field(default=None, alias="contentBucket")
     content_key: str | None = Field(default=None, alias="contentKey")

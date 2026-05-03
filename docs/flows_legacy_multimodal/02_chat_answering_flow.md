@@ -10,7 +10,7 @@ Dieses Dokument beschreibt den Runtime-Ablauf für eine Userfrage im Coach-Chat.
 - n8n ruft **Python retrieve** auf und erhält Evidence-Pakete ohne URLs.
 - n8n ruft **Java resolve-media-refs** im Batch auf und erhält kurzlebige presigned URLs.
 - n8n ruft Gemini Flash mit Frage, Memory und Evidence-Context auf.
-- Antwort kommt als Paraphrase plus IEEE-Quellenliste zurück (`[1] PDF ... Seite X`, `[2] Video ... Minute mm:ss`).
+- Antwort kommt mit Quellenhinweisen (Seite/Timestamp) zurück.
 
 ---
 
@@ -31,7 +31,6 @@ Dieses Dokument beschreibt den Runtime-Ablauf für eine Userfrage im Coach-Chat.
    - Output: `evidenceId -> urls[]`.
 7) n8n ruft Gemini Flash:
    - Kontext: Userfrage + Memory + resolved URLs + Locator + hints.
-   - Ausgabeformat erzwingen: eigene Worte + IEEE-Referenzen.
 8) n8n liefert Antwort + Zitate an Java zurück.
 9) Java antwortet ans Frontend.
 
@@ -77,7 +76,6 @@ sequenceDiagram
 - `topK` retrieve: 8
 - `topN` resolve/flash: 3
 - presigned URL TTL: 300 Sekunden
-- Proof-first aktiv, Workmode aktuell nicht aktiv
 - Q&A standardmäßig downranked oder rausgefiltert
 
 ---
@@ -88,5 +86,4 @@ sequenceDiagram
 |---|---|
 | Python endpoint | `services/rag_service/src/rag_service/main.py` |
 | Retrieval mapping | `services/rag_service/src/rag_service/service.py` |
-| Schema/RPC | `services/rag_service/schema.sql` |
 | Security/Tenancy Zielbild | `docs/building/plan_initial_overview.md` |

@@ -19,17 +19,20 @@ from .models import (
 )
 from .service import RagService
 from .vector_store import SupabaseVectorStore
+from .openai_client import OpenAIClientFactory
 
 load_dotenv()
 
 settings = load_settings()
 job_store = InMemoryJobStore()
 gemini_factory = GeminiClientFactory(api_key=settings.gemini_api_key)
+openai_factory = OpenAIClientFactory(api_key=settings.openai_api_key)
 service = RagService(
     settings=settings,
     vector_store=SupabaseVectorStore(settings=settings),
     embedder=Embedder(gemini_factory=gemini_factory),
     gemini_factory=gemini_factory,
+    openai_factory=openai_factory,
 )
 
 app = FastAPI(title="CoachApp RAG Service", version="0.1.0")

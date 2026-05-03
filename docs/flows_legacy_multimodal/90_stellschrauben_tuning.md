@@ -21,12 +21,12 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 
 | Stellschraube | Standard | Wirkung | Wo ändern |
 |---|---:|---|---|
-| `transcriptTargetSpanSec` | 40 | Kürzer = präziser, mehr Chunks | `RAG_TRANSCRIPT_TARGET_SPAN_SECONDS` |
-| `transcriptMaxSpanSec` | 60 | Obergrenze für Chunk-Länge | `RAG_TRANSCRIPT_MAX_SPAN_SECONDS` |
-| Sprache | `de` | steuert Whisper-Spracherkennung | `RAG_TRANSCRIPT_LANGUAGE` |
-| Whisper Modell | `whisper-1` | Qualität/Kosten der Transkription | `RAG_WHISPER_MODEL` |
+| `windowLenSec` | 120 | Kürzer = präziser, mehr Vektoren | `RAG_INDEX_WINDOW_SECONDS` |
+| `windowOverlapSec` | 10 | Höher = besserer Kontext, mehr Vektoren | `RAG_INDEX_WINDOW_OVERLAP_SECONDS` |
+| `paddingSec` (Answering) | 30 | Höher = bessere Satzanfänge, mehr LLM-Kontext | `RAG_VIDEO_PADDING_SECONDS` |
 | Relevanzpass aktiv | true | Spart Kosten, erhöht Signalqualität | Index payload `analyzeVideoRelevance` |
-| Full-pass priorisiert | true | Erst globale Segmente, dann Range-Transkription | `video_analysis.py` + `service.py` |
+| Noise-Skip | true | Reduziert Datenmenge/Kosten | `service.py` (noise windows skip) |
+| Full-pass priorisiert | true | Erst globale Segmente, dann Windowing | `video_analysis.py` + `service.py` |
 
 ---
 
@@ -35,11 +35,8 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 | Stellschraube | Standard | Wirkung | Wo ändern |
 |---|---:|---|---|
 | Seite als Einheit | ja | Robust für Layout/Tabellen | `processors.py` / `service.py` |
-| Render-Zielbreite | 1280px | Kosten/Lesbarkeit Trade-off | `RAG_PDF_RENDER_TARGET_WIDTH` |
-| Render-Format | jpeg | kleinere Artefakte vs. Größe | `RAG_PDF_RENDER_FORMAT` |
-| JPEG-Qualität | 80 | Qualität/Kosten Trade-off | `RAG_PDF_RENDER_QUALITY` |
 | Neighbor Pages im Answering | bedarfsbasiert | Besserer Kontext, mehr Resolve/LLM | n8n Prompt-Logik / flow policy |
-| `extractedText` speichern | aktiv (best effort) | Hilft bei Policy/Debug/Qualität | `service.py` PDF branch |
+| `extractedText` speichern | optional | Hilft bei Hybrid/Debug, mehr Storage | `service.py` PDF branch |
 
 ---
 
@@ -48,7 +45,6 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 | Stellschraube | Ziel | Wirkung | Ort |
 |---|---|---|---|
 | Tenant Filter | immer | verhindert Cross-tenant scans | `service.py` tenant filtering |
-| Tenant-Filter im RPC | immer | reduziert unnötige Rückgaben | `match_rag_chunks` |
 | Two-stage Retrieval | ab >50k vectors/coach | reduziert teure Vector-Scans | Retrieval layer (später) |
 | Prefilter Limit | 1200 | mehr Kandidaten = besserer Recall, höherer CPU/RAM-Bedarf | `RAG_TWO_STAGE_PREFILTER_LIMIT` |
 | Candidate Count | 120 | steuert Kosten von Stage-2-Reranking | `RAG_TWO_STAGE_CANDIDATE_COUNT` |
@@ -85,7 +81,7 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 Wenn Antworten zu langsam/teuer/unpräzise werden:
 
 1. Prüfen: `topK`/`topN` zu hoch?
-2. Prüfen: Werden unnötig viele Video-Spans erzeugt (`target/max span`)?
+2. Prüfen: Werden `noise`-Windows dennoch indexiert?
 3. Prüfen: Tenant-Filter greift?
 4. Prüfen: Q&A wird ungewollt als Faktquelle genutzt?
 5. Prüfen: Resolve im Batch oder N+1?

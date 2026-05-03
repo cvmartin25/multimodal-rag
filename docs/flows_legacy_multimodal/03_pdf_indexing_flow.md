@@ -8,7 +8,7 @@ Dieses Dokument beschreibt die PDF-Ingestion von “Upload fertig” bis “retr
 
 - Java markiert Dokument als `uploaded`.
 - n8n startet den Python-Index-Job.
-- Python zerlegt PDF seitenweise, erzeugt pro Seite multimodales Embedding und speichert Evidence.
+- Python zerlegt PDF seitenweise, erzeugt pro Seite Embedding und speichert Evidence.
 - Jede Seite wird als `pdf_page` mit `locator.pageNumber` gespeichert.
 
 ---
@@ -20,20 +20,19 @@ Dieses Dokument beschreibt die PDF-Ingestion von “Upload fertig” bis “retr
    - `coachProfileId`
    - `sourceKind=document`
    - `sourceId=documentId`
-   - `contentUrl` (presigned URL aus Bucket) oder `contentBase64`
+   - `contentBase64` (oder später Storage-Referenz)
 3) Python erkennt `content_type=pdf`.
 4) PDF wird in einzelne Seiten überführt.
 5) Pro Seite:
-   - Seitenbild mit fixer Zielbreite rendern (default 1280px, default JPEG)
-   - Text-Layer lokal extrahieren als `extracted_text` (best effort)
+   - Seitenbild (PNG) rendern
+   - optional Text extrahieren (`extractedText`)
    - Seite mit Gemini Embedding 2 embeddeden
-   - Row in Supabase (`rag_chunks`) schreiben mit:
+   - Row in Supabase schreiben mit:
      - `embedding`
      - `metadata.evidence_type=pdf_page`
      - `metadata.locator.pageNumber`
      - `metadata.storage_refs`
-     - `text_content=extracted_text`
-     - `metadata.extraction_quality`, `metadata.layout_complexity`, `metadata.has_tables`, `metadata.has_figures`
+     - optional `text_content=extractedText`
 6) Job endet in `active` (oder `error` mit Fehlertext).
 
 ---
@@ -78,4 +77,3 @@ flowchart TD
 | Processing | `services/rag_service/src/rag_service/processors.py` |
 | Indexing orchestration | `services/rag_service/src/rag_service/service.py` |
 | API entry | `services/rag_service/src/rag_service/main.py` |
-| DB schema | `services/rag_service/schema.sql` |

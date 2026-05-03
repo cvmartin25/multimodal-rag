@@ -1,8 +1,5 @@
 # Flow: Text-Assistent (KI-Textverarbeitung)
 
-> Hinweis: Dieses Dokument ist ein allgemeines Flow-Beispiel fuer asynchrone n8n-Callback-Patterns.
-> Es beschreibt keinen Kernpfad des aktuellen Multimodal-RAG Proof-first MVP.
-
 Dieses Dokument beschreibt den Ablauf der **Text-Assistent-Funktion**: Nutzer:in gibt Anweisung und Text ein, das Backend startet einen n8n-Workflow, und das verarbeitete Ergebnis kommt per Callback und wird vom Frontend per Polling abgerufen. Für neue Teammitglieder gedacht.
 
 ---
