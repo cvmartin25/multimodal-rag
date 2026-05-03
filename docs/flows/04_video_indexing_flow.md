@@ -15,7 +15,7 @@ Dieses Dokument beschreibt den Video-Ingestion-Flow inklusive Relevanzlogik und 
 ## 1. Detaillierter Ablauf
 
 1) Java markiert Video als `uploaded`.
-2) n8n startet `POST /v1/rag/index` im Python-Service.
+2) n8n startet `POST /v1/rag/index` im Python-Service (Payload mit `contentBase64`, `contentUrl` oder bei konfiguriertem Worker **`contentBucket` + `contentKey`** → Python lädt Original per S3-Worker, siehe `content_loader.py`).
 3) Python erkennt `content_type=video`.
 4) Full-pass Segmentierung (Primärpfad):
    - Flash sieht das gesamte Video und liefert `startSec/endSec/label/summary/tags`.
@@ -78,4 +78,6 @@ flowchart TD
 | Video processing + span building | `services/rag_service/src/rag_service/processors.py` |
 | Segment analysis | `services/rag_service/src/rag_service/video_analysis.py` |
 | Whisper transcription | `services/rag_service/src/rag_service/transcription.py` |
+| Content load (Base64 / URL / S3 worker) | `services/rag_service/src/rag_service/content_loader.py` |
+| S3 worker | `services/rag_service/src/rag_service/object_storage.py` |
 | Index orchestration | `services/rag_service/src/rag_service/service.py` |

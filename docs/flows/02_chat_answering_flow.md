@@ -12,6 +12,8 @@ Dieses Dokument beschreibt den Runtime-Ablauf für eine Userfrage im Coach-Chat.
 - n8n ruft Gemini Flash mit Frage, Memory und Evidence-Context auf.
 - Antwort kommt als Paraphrase plus IEEE-Quellenliste zurück (`[1] PDF ... Seite X`, `[2] Video ... Minute mm:ss`).
 
+*(Separat: Im **Indexing-Job** kann Python optional mit Worker-S3 Originale laden — das ändert nichts daran, dass im Chat **nur Java** Presigned-URLs für Evidence-Medien liefert.)*
+
 ---
 
 ## 1. Schrittfolge im Detail

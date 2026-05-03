@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from fastapi import Header, HTTPException, status
+
+from .config import Settings
+
+
+def authorize_service_call(
+    settings: Settings,
+    authorization: str | None = Header(default=None),
+) -> None:
+    if not settings.auth_token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Service auth token is not configured.",
+        )
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing Authorization header.",
+        )
+    expected = f"Bearer {settings.auth_token}"
+    if authorization.strip() != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid service token.",
+        )

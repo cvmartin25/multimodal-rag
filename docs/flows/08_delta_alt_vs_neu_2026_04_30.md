@@ -77,16 +77,20 @@ Auswirkung:
 ## 6) Input-Pfad im Indexing
 
 - **Alt**: primaer `contentBase64`.
-- **Neu**: `contentUrl` (presigned) **oder** `contentBase64`.
+- **Neu**:
+  - `contentUrl` (presigned GET) **oder** `contentBase64`
+  - **oder** `contentBucket` + `contentKey`, wenn der Python-Service **Worker-Object-Storage** (`RAG_S3_*`, boto3) nutzt: direkter Download des Originals im Indexing-Job (`content_loader.py`), optional Upload von PDF-Seiten-Derivaten (`object_storage.py`).
 
 Auswirkung:
 - besser fuer Bucket-zentrierte Produktion und groessere Dateien.
+- weniger Abhaengigkeit von kurzlebigen Presigned-URLs fuer jeden Index-Lauf (optional).
 
 ---
 
 ## 7) Konfiguration / Stellschrauben
 
 - **Neu hinzugekommen**:
+  - Worker-S3 (Indexing): `RAG_S3_ENDPOINT_URL`, `RAG_S3_ACCESS_KEY_ID`, `RAG_S3_SECRET_ACCESS_KEY`, optional `RAG_S3_REGION`, `RAG_S3_ADDRESSING_STYLE`, `RAG_S3_ALLOWED_BUCKETS`, `RAG_S3_KEY_PREFIX_ALLOWLIST`
   - `OPENAI_API_KEY`
   - `RAG_WHISPER_MODEL`
   - `RAG_TRANSCRIPT_LANGUAGE`
@@ -103,8 +107,9 @@ Auswirkung:
 
 ## 8) Was unveraendert bleibt
 
-- Java bleibt Source of Truth fuer Tenancy, Policy und Presigned URL Resolve.
+- Java bleibt Source of Truth fuer Tenancy, Policy und **Presigned URL Resolve fuer Chat/Evidence** (Flash).
 - n8n bleibt Orchestrierungsschicht (Workflow, Retry, Promptaufbau).
 - Python bleibt Worker fuer Indexing und Retrieval.
 - Tenancy wird weiterhin serverseitig erzwungen.
+- Python kann zusaetzlich S3-Worker-Zugriff fuer **Indexing-I/O** haben; das aendert nicht die Regel „Retrieve liefert nur storageRefs, Resolve fuer Nutzer-Medien ueber Java“.
 

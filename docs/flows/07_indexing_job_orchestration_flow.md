@@ -16,7 +16,9 @@ Dieses Dokument beschreibt den Soll-Ablauf für den Job-Lifecycle ab `uploaded` 
 
 1) Frontend führt Upload über Java aus (`begin-upload`, `complete-upload`).
 2) Java setzt Medium auf `uploaded`.
-3) Java stößt n8n Workflow `index-start` an (Payload nur IDs + trusted `coachProfileId` + presigned `contentUrl`).
+3) Java stößt n8n Workflow `index-start` an (Payload: IDs + trusted `coachProfileId` + **Medium-Referenz**):
+   - üblich: presigned **`contentUrl`** zum Download des Originals, **oder**
+   - alternativ (wenn Python Worker-S3 aktiv): **`contentBucket` + `contentKey`** — dann lädt Python das Objekt direkt per Worker-Credentials, ohne dass diese Runde eine Presigned-URL braucht.
 4) n8n erstellt/aktualisiert Job-Kontext und ruft Python `POST /v1/rag/index`.
 5) Python verarbeitet:
    - `text`: chunk -> embed -> store

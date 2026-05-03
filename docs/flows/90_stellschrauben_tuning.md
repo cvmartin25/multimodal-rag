@@ -43,6 +43,21 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 
 ---
 
+## 3b) Indexing: Worker Object Storage (Python ↔ S3)
+
+Optional: Python lädt Originale per **`contentBucket` + `contentKey`** und kann PDF-Seitenbilder zurück nach S3 schreiben (`object_storage.py`). Voraussetzung: `RAG_S3_*` gesetzt und Allowlists passend zur Produktions-Pfadstruktur.
+
+| Stellschraube | Standard | Wirkung | Wo ändern |
+|---|---|---|---|
+| Worker aktiv | aus (ohne Env) | ohne Credentials nur Base64/URL | `RAG_S3_ENDPOINT_URL`, `RAG_S3_ACCESS_KEY_ID`, `RAG_S3_SECRET_ACCESS_KEY` |
+| Bucket-Allowlist | leer = alle konfigurierten Buckets erlaubt (Implementierung prüfen) | Begrenzt Blast-Radius bei falscher Payload | `RAG_S3_ALLOWED_BUCKETS` |
+| Key-Prefix-Allowlist | leer = keine Extra-Prüfung | Erzwingt Präfix z. B. `coachId/` | `RAG_S3_KEY_PREFIX_ALLOWLIST` |
+| Addressing style | `path` | S3-kompatible Provider (Hetzner, MinIO) | `RAG_S3_ADDRESSING_STYLE` |
+
+**Hinweis:** Das betrifft nur den **Indexing-Worker**. Kurzlebige URLs für **Chat/Flash** kommen weiterhin über **Java Resolve**, nicht über diese Credentials.
+
+---
+
 ## 4) Performance- und Skalierungshebel
 
 | Stellschraube | Ziel | Wirkung | Ort |
@@ -66,6 +81,7 @@ Dieses Dokument ist die zentrale Referenz für Feinjustierung. Ziel: Bei später
 | URL TTL | 300s | kurze Exposition | Java resolve endpoint |
 | Trusted coach context | Pflicht | verhindert tenant leaks | Java→n8n Übergabe |
 | Keine persistenten URLs | Pflicht | reduziert Leak-Risiko | gesamter Flow |
+| S3-Worker-Allowlists (Indexing) | empfohlen in Prod | Bucket/Key-Pfade einschränken | `RAG_S3_ALLOWED_BUCKETS`, `RAG_S3_KEY_PREFIX_ALLOWLIST` |
 
 ---
 
