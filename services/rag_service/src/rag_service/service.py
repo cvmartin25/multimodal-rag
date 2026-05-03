@@ -7,6 +7,7 @@ import numpy as np
 
 from .config import Settings
 from .content_loader import load_content_bytes
+from .object_storage import WorkerObjectStorage, pdf_page_derivative_key
 from .embedding import Embedder
 from .gemini_client import GeminiClientFactory
 from .openai_client import OpenAIClientFactory
@@ -52,12 +53,14 @@ class RagService:
         embedder: Embedder,
         gemini_factory: GeminiClientFactory,
         openai_factory: OpenAIClientFactory,
+        object_storage: WorkerObjectStorage | None = None,
     ) -> None:
         self._settings = settings
         self._store = vector_store
         self._embedder = embedder
         self._gemini_factory = gemini_factory
         self._openai_factory = openai_factory
+        self._object_storage = object_storage
 
     def retrieve(self, request: RetrieveRequest) -> RetrieveResponse:
         options = request.options
@@ -130,7 +133,13 @@ class RagService:
         )
 
     def run_indexing(self, payload: IndexPayload) -> int:
-        file_bytes = load_content_bytes(content_base64=payload.content_base64, content_url=payload.content_url)
+        file_bytes = load_content_bytes(
+            payload.content_base64,
+            payload.content_url,
+            content_bucket=payload.content_bucket,
+            content_key=payload.content_key,
+            object_storage=self._object_storage,
+        )
         content_type = detect_content_type(payload.mime_type, payload.original_filename)
         collection = payload.collection or self._settings.default_collection
         self._store.upsert_source(
@@ -180,6 +189,21 @@ class RagService:
             )
             for idx, page in enumerate(pages):
                 vec = self._embedder.embed_binary_document(page.image_bytes, page.image_mime_type)
+                if (
+                    self._object_storage
+                    and self._object_storage.is_enabled()
+                    and payload.content_bucket
+                    and payload.content_key
+                ):
+                    self._object_storage.upload_pdf_page_image(
+                        bucket=payload.content_bucket,
+                        original_key=payload.content_key,
+                        page_number=page.page_number,
+                        extension=page.image_extension,
+                        body=page.image_bytes,
+                        content_type=page.image_mime_type,
+                        expected_bucket=payload.content_bucket,
+                    )
                 row = self._build_base_row(
                     payload=payload,
                     collection=collection,
@@ -447,7 +471,7 @@ class RagService:
         if payload.content_bucket and payload.content_key:
             key = payload.content_key
             if page_number is not None:
-                key = f"{payload.content_key.rstrip('/')}/pages/{page_number}.{extension}"
+                key = pdf_page_derivative_key(payload.content_key, page_number, extension)
             return [{"kind": "s3", "bucket": payload.content_bucket, "key": key}]
         # fallback when S3 ref is not yet integrated
         return [

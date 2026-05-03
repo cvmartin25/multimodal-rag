@@ -27,6 +27,11 @@
 - Unit-Tests angepasst und erfolgreich ausgeführt:
   - `python -m unittest discover -s services/rag_service/tests -p "test_*.py" -v`
   - Ergebnis: 2/2 Tests OK.
+- S3-kompatibler **Worker Object Storage** (boto3):
+  - Download des Originals per `contentBucket` + `contentKey`, wenn `RAG_S3_*` gesetzt.
+  - Upload gerenderter **PDF-Seitenbilder** nach `{contentKey}/pages/{n}.{ext}` (Keys wie in `storageRefs`).
+  - Optionale Einschränkungen: `RAG_S3_ALLOWED_BUCKETS`, `RAG_S3_KEY_PREFIX_ALLOWLIST`.
+  - Datei: `object_storage.py`; Abhängigkeit: `boto3`.
 
 ### 2026-04-27
 

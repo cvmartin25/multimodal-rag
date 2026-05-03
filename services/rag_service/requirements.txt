@@ -10,3 +10,4 @@ PyMuPDF
 pydub
 moviepy
 openai
+boto3

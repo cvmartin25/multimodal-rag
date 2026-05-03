@@ -113,7 +113,6 @@ class WorkerObjectStorage:
         body: bytes,
         content_type: str,
         expected_bucket: str,
-        coach_profile_id: str,
     ) -> str:
         """
         PUT unter `{originalKey}/pages/{page}.{ext}` — nur wenn Keys zum Job passen.
@@ -126,9 +125,6 @@ class WorkerObjectStorage:
         derivative_key = pdf_page_derivative_key(original_key, page_number, extension)
         if not original_key or original_key != original_key.strip():
             raise ValueError("original_key ungueltig.")
-        # Optional: Coach-Pfad erzwingen (Prefix allowlist sollte coach/... enthalten)
-        if coach_profile_id and coach_profile_id not in original_key:
-            pass  # weicher Check — Prefix-Allowlist ist schaerfer
         if not self._key_allowed(derivative_key):
             raise PermissionError(f"Derivative-Key nicht erlaubt (Prefix): {derivative_key}")
         client = self._get_client()

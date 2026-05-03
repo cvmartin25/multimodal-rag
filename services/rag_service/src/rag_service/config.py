@@ -39,6 +39,14 @@ class Settings:
     pdf_render_target_width: int = 1280
     pdf_render_format: str = "jpeg"
     pdf_render_quality: int = 80
+    # S3-compatible worker (placeholders; leave empty to disable worker uploads/downloads).
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_region: str = "us-east-1"
+    s3_addressing_style: str = "path"
+    s3_allowed_buckets: str = ""
+    s3_key_prefix_allowlist: str = ""
 
 
 def load_settings() -> Settings:
@@ -68,5 +76,13 @@ def load_settings() -> Settings:
         pdf_render_target_width=_int_env("RAG_PDF_RENDER_TARGET_WIDTH", 1280),
         pdf_render_format=os.getenv("RAG_PDF_RENDER_FORMAT", "jpeg"),
         pdf_render_quality=_int_env("RAG_PDF_RENDER_QUALITY", 80),
+        s3_endpoint_url=os.getenv("RAG_S3_ENDPOINT_URL", ""),
+        s3_access_key_id=os.getenv("RAG_S3_ACCESS_KEY_ID", "") or os.getenv("AWS_ACCESS_KEY_ID", ""),
+        s3_secret_access_key=os.getenv("RAG_S3_SECRET_ACCESS_KEY", "")
+        or os.getenv("AWS_SECRET_ACCESS_KEY", ""),
+        s3_region=os.getenv("RAG_S3_REGION", "us-east-1"),
+        s3_addressing_style=os.getenv("RAG_S3_ADDRESSING_STYLE", "path"),
+        s3_allowed_buckets=os.getenv("RAG_S3_ALLOWED_BUCKETS", ""),
+        s3_key_prefix_allowlist=os.getenv("RAG_S3_KEY_PREFIX_ALLOWLIST", ""),
     )
 
