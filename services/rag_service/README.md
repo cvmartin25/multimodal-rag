@@ -28,7 +28,7 @@ Environment file: copy `services/.env.example` to `.env` (e.g. in `services/` or
 
 Optional:
 
-- `OPENAI_API_KEY` (optional; needed when OpenAI-backed features run, e.g. Whisper)
+- `OPENAI_API_KEY` (required for **video** indexing: Whisper runs via OpenAI’s `audio.transcriptions` API with `RAG_WHISPER_MODEL`, default `whisper-1`; not used for text/PDF/image/**audio** paths in the current indexer)
 - `RAG_SUPABASE_TABLE` (default: `rag_chunks`)
 - `RAG_SUPABASE_MATCH_RPC` (default: `match_rag_chunks`)
 - `RAG_DEFAULT_COLLECTION` (default: `default`)
