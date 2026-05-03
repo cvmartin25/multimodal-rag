@@ -17,6 +17,8 @@ pip install -r requirements.txt
 uvicorn src.rag_service.main:app --reload --port 8010
 ```
 
+Environment file: copy `services/.env.example` to `.env` (e.g. in `services/` or this directory, matching your working directory when you start uvicorn) or export variables in the shell.
+
 ## Required environment variables
 
 - `RAG_SERVICE_AUTH_TOKEN` (shared secret for service-to-service calls)
@@ -26,8 +28,9 @@ uvicorn src.rag_service.main:app --reload --port 8010
 
 Optional:
 
-- `RAG_SUPABASE_TABLE` (default: `documents`)
-- `RAG_SUPABASE_MATCH_RPC` (default: `match_documents`)
+- `OPENAI_API_KEY` (optional; needed when OpenAI-backed features run, e.g. Whisper)
+- `RAG_SUPABASE_TABLE` (default: `rag_chunks`)
+- `RAG_SUPABASE_MATCH_RPC` (default: `match_rag_chunks`)
 - `RAG_DEFAULT_COLLECTION` (default: `default`)
 - `RAG_INDEX_WINDOW_SECONDS` (default: `120`)
 - `RAG_INDEX_WINDOW_OVERLAP_SECONDS` (default: `10`)
@@ -37,6 +40,8 @@ Optional:
 - `RAG_TWO_STAGE_ENABLED` (default: `true`)
 - `RAG_TWO_STAGE_PREFILTER_LIMIT` (default: `1200`)
 - `RAG_TWO_STAGE_CANDIDATE_COUNT` (default: `120`)
+
+Further optional variables (transcript/PDF tuning, S3 worker): see `services/.env.example`. For **Hetzner Object Storage**, set `RAG_S3_ENDPOINT_URL` to `https://<location>.your-objectstorage.com`, `RAG_S3_REGION` to the same location code (`fsn1`, `nbg1`, or `hel1`), and use Hetzner S3 credentials; if signing fails, try `RAG_S3_ADDRESSING_STYLE=virtual` (Hetzner’s boto3 examples often use virtual).
 
 ## Notes
 
