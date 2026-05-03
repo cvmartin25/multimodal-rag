@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Header, status
 from dotenv import load_dotenv
 
@@ -22,7 +24,10 @@ from .service import RagService
 from .vector_store import SupabaseVectorStore
 from .openai_client import OpenAIClientFactory
 
-load_dotenv()
+# .../services/rag_service/src/rag_service/main.py -> parents[3] == services/
+_services_root = Path(__file__).resolve().parents[3]
+load_dotenv(_services_root / ".env")
+load_dotenv(_services_root / "rag_service" / ".env", override=True)
 
 settings = load_settings()
 job_store = InMemoryJobStore()
