@@ -1,9 +1,16 @@
--- RAG schema for proof-first retrieval.
--- Embedding dimension is fixed to Gemini Embedding 2 (3072).
+-- =============================================================================
+-- RAG: Quellen + Chunks (Gemini Embedding 2, 3072 Dimensionen)
+-- Einmal im Supabase SQL-Editor ausführen (leere DB / Tabellen vorher entfernt).
+-- Vektorindex: HNSW auf halfvec-Cast — float32-vector() ist in pgvector auf
+-- 2000 Dim. indexierbar; 3072 → halfvec(3072) bis 4000 Dim. (pgvector ≥ 0.7).
+-- =============================================================================
 
 create extension if not exists vector with schema extensions;
 
-create table if not exists public.rag_sources (
+-- -----------------------------------------------------------------------------
+-- rag_sources: eine logische Datei/Quelle pro Coach
+-- -----------------------------------------------------------------------------
+create table public.rag_sources (
   id text primary key,
   coach_profile_id text not null,
   source_kind text not null,
@@ -17,12 +24,15 @@ create table if not exists public.rag_sources (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_rag_sources_tenant
+create index idx_rag_sources_tenant
   on public.rag_sources (coach_profile_id, source_kind);
 
-create table if not exists public.rag_chunks (
+-- -----------------------------------------------------------------------------
+-- rag_chunks: Chunk-Zeilen inkl. Embedding vector(3072)
+-- -----------------------------------------------------------------------------
+create table public.rag_chunks (
   id bigserial primary key,
-  source_id text not null references public.rag_sources(id) on delete cascade,
+  source_id text not null references public.rag_sources (id) on delete cascade,
   coach_profile_id text not null,
   source_kind text not null,
   title text not null,
@@ -37,23 +47,26 @@ create table if not exists public.rag_chunks (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_rag_chunks_tenant_collection
+create index idx_rag_chunks_tenant_collection
   on public.rag_chunks (coach_profile_id, collection);
 
-create index if not exists idx_rag_chunks_source
+create index idx_rag_chunks_source
   on public.rag_chunks (source_kind, source_id);
 
-create index if not exists idx_rag_chunks_metadata_gin
+create index idx_rag_chunks_metadata_gin
   on public.rag_chunks using gin (metadata);
 
-create index if not exists idx_rag_chunks_embedding_ivfflat
-  on public.rag_chunks using ivfflat (embedding vector_cosine_ops)
-  with (lists = 100);
+create index idx_rag_chunks_embedding_hnsw_halfvec
+  on public.rag_chunks using hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)
+  with (m = 16, ef_construction = 64);
 
-create or replace function public.match_rag_chunks(
+-- -----------------------------------------------------------------------------
+-- RPC: semantische Suche (Cosinus über halfvec, passend zum Index)
+-- -----------------------------------------------------------------------------
+create or replace function public.match_rag_chunks (
   query_embedding vector(3072),
-  match_threshold float,
-  match_count int,
+  match_threshold double precision,
+  match_count integer,
   filter_type text default null,
   filter_collection text default null,
   filter_coach_profile_id text default null
@@ -70,7 +83,7 @@ returns table (
   coach_profile_id text,
   source_kind text,
   source_id text,
-  similarity float
+  similarity double precision
 )
 language sql
 stable
@@ -87,12 +100,25 @@ as $$
     c.coach_profile_id,
     c.source_kind,
     c.source_id,
-    1 - (c.embedding <=> query_embedding) as similarity
+    (1 - (c.embedding::halfvec(3072) <=> query_embedding::halfvec(3072)))::double precision
+      as similarity
   from public.rag_chunks c
   where (filter_type is null or c.content_type = filter_type)
     and (filter_collection is null or c.collection = filter_collection)
     and (filter_coach_profile_id is null or c.coach_profile_id = filter_coach_profile_id)
-    and (1 - (c.embedding <=> query_embedding)) >= match_threshold
-  order by c.embedding <=> query_embedding
+    and (
+      1 - (c.embedding::halfvec(3072) <=> query_embedding::halfvec(3072))
+    ) >= match_threshold
+  order by c.embedding::halfvec(3072) <=> query_embedding::halfvec(3072)
   limit greatest(match_count, 1);
 $$;
+
+-- PostgREST (Service Key): execute für RPC
+grant execute on function public.match_rag_chunks (
+  vector(3072),
+  double precision,
+  integer,
+  text,
+  text,
+  text
+) to service_role;
